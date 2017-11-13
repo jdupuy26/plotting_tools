@@ -20,7 +20,7 @@ from scipy.stats import binned_statistic
 from scipy.ndimage.filters import gaussian_filter, uniform_filter
 
 # This will allow us to use 'read_athena_bin' and 'read_athinput' on THETIS 
-sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/analysis_files/plotting_tools')
+sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/misc_scripts/plotting_tools')
 import read_athena_bin
 import read_athinput
 # import units class 
