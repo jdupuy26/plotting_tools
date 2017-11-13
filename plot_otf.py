@@ -12,7 +12,7 @@ from matplotlib.pyplot import cm
 # Import from correct directory
 sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/'
                   'jdupuy26/Johns_work/'
-                  'analysis_files/plotting_tools')
+                  'misc_scripts/plotting_tools')
 import read_otf as rotf
 import read_athinput
 from units_class import * 
@@ -61,7 +61,8 @@ def get_data(file,**kwargs):
             prec  = kwargs[key]
     
     t, mhvc, rhvc, rpos,\
-    acc_rate, mcR, mcL,\
+    acc_rate, facvhvc, ahvc,\
+    mcR, mcL,\
     r, ang, vrot = rotf.readbin(file,prec, **kwargs)
 
     if iunit == 1: 
@@ -84,7 +85,8 @@ def get_data(file,**kwargs):
     vrot     *= u.v
 
     return t, mhvc, rhvc, rpos,\
-           acc_rate, mcR, mcL,\
+           acc_rate, facvhvc, ahvc,\
+           mcR, mcL,\
            r, ang, vrot 
 
 #================================
@@ -129,7 +131,8 @@ def init(quant, files, **kwargs):
         # Read in data
         for i in range(n):
             t, mhvc, rhvc, rpos,\
-            acc_rate, mcR, mcL,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
             r, ang, vrot        = get_data(files[i], **kwargs)
             
             tarr[i]     = t
@@ -137,10 +140,12 @@ def init(quant, files, **kwargs):
             mcL_arr[i]  = mcL
 
         # print HVC parameters 
-        print("[init]: mhvc = %1.3e [M_sun]\n"
+        print("\n[init]: mhvc = %1.3e [M_sun]\n"
               "        rhvc = %1.3e [pc]\n"
               "        rpos = %1.3e [pc]\n"
-              "    acc_rate = %1.3e [M_sun/Myr]\n" % (mhvc, rhvc, rpos, acc_rate))
+              "    acc_rate = %1.3e [M_sun/Myr]\n"
+              "     facvhvc = %1.3e [unitless] \n"
+              "        ahvc = %1.3e [rad]\n" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
         # Return quantities
         if quant == "mcR":
             return tarr, mcR_arr
@@ -154,22 +159,24 @@ def init(quant, files, **kwargs):
         vrot_arr = np.zeros((n,Nang,nx1_dom))
         for i in range(n):
             t, mhvc, rhvc, rpos,\
-            acc_rate, mcR, mcL,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
             r, ang, vrot        = get_data(files[i], **kwargs)
             
             tarr[i]     = t
             vrot_arr[i] = vrot
-
-        # print HVC parameters
-        print("[init]: mhvc = %1.3e [M_sun]\n"
+        # print HVC parameters 
+        print("\n[init]: mhvc = %1.3e [M_sun]\n"
               "        rhvc = %1.3e [pc]\n"
               "        rpos = %1.3e [pc]\n"
-              "    acc_rate = %1.3e [M_sun/Myr]\n" % (mhvc, rhvc, rpos, acc_rate))
-
+              "    acc_rate = %1.3e [M_sun/Myr]\n"
+              "     facvhvc = %1.3e [unitless] \n"
+              "        ahvc = %1.3e [rad]\n" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
         data = (r, ang, vrot_arr)
         return tarr, data
 
-
+#===============================
+# main()
 def main():
     # Get input file
     athdir = os.getcwd()+'/'
@@ -238,8 +245,7 @@ def main():
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
-
-
+    
     # Get the data
     tarr, data = init(quant, otf_files, prec=32, 
                       nx1_dom=nx1_dom,Nang=Nang) 
@@ -247,7 +253,9 @@ def main():
     #===== PLOTTING =============================================
     # set colors for lines
     colormap = cm.gist_ncar
-    c    = [colormap(i) for i in np.linspace(0,0.8,Nang)]
+    if Nang != 4:
+        c    = [colormap(i) for i in np.linspace(0,0.4,Nang)]
+    else: c = ['k','b','g','r'] 
     
     # set ylabel
     ystr = get_ylabel(quant)
@@ -297,7 +305,7 @@ def main():
                     plt.savefig(quant+str(ifrm)+".eps")
             
             # handle animation   
-            else:
+            elif anim:
                 # create list of lines 
                 lines = [axs[iang].plot(r, vrot[0,iang],color=c[iang],
                             label='$\\theta$ = %1.1f$^\\circ$' % ang[iang]) for iang in range(Nang)]
@@ -320,10 +328,14 @@ def main():
                     return lines
                 
                 # do the animation
-                ani = animation.FuncAnimation(fig, animate, range(n))
+                ani = animation.FuncAnimation(fig, animate, range(n), repeat=False)
                 if save:
                     print("[main]: Saving animation")
                     ani.save(quant+".mp4")
+            else: 
+                print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
+                            "'python plot_otf.py -h' for help.")
+                quit()
         # handle plotting of single rotation curve 
         else: 
             # setup axes
@@ -336,11 +348,12 @@ def main():
                 t = tarr[ifrm]
                 ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                 ax.plot(r, vrot[ifrm, iang], color=c[iang], label='$\\theta$ = %1.1f$^\\circ$' % ang[iang])
+                ax.legend(loc=4)
                 if save:
                     print("[main]: Saving figure")
                     plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
             # handle animation
-            else: 
+            elif anim: 
                 line, = ax.plot(r, vrot[0,iang], color=c[iang], 
                         label='$\\theta$ = %1.1f$^\\circ$' % ang[iang])   
                 ax.legend(loc=4)
@@ -348,10 +361,14 @@ def main():
                     line.set_ydata(vrot[ifrm,iang])
                     ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                     return line,
-                ani = animation.FuncAnimation(fig, animate, range(n))
+                ani = animation.FuncAnimation(fig, animate, range(n), repeat=False)
                 if save:
                     print("[main]: Saving animation")
                     ani.save(quant+str(iang)+".mp4")
+            else: 
+                print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
+                            "'python plot_otf.py -h' for help.")
+                quit()
     # show 
     if save:
         print("[main]: Program complete")
