@@ -26,11 +26,12 @@ from units_class import *
 #
 #  Keywords: python plot_otf.py -h  
 #
-#  Usage: python plot_otf.py quant (--ifrm or --anim) --iang  
+#  Usage: python plot_otf.py quant (--ifrm, --anim, --iani) --iang  
 #          
 #  Author: John Dupuy 
 #          UNC Chapel Hill
-#  Date:   11/7/17
+#  Date:    11/07/17
+#  Updated: 11/14/17 
 #=====================================================
 
 #============FUNCTIONS===========
@@ -101,22 +102,28 @@ def get_ylabel(quant):
         lab = 'mcR/mcL [unitless]'
     elif quant == 'LoR':
         lab = 'mcL/mcR [unitless]'
-    else: 
+    elif quant == 'vrot': 
         lab = 'v [pc/Myr]'
+    elif quant == 'vcomp':
+        lab = 'v$_{sim}$/v$_{ctrl}$ [unitless]'
     return lab
         
 
 #================================
 # initialize() function
 def init(quant, files, **kwargs):
-    Nang    = 8
-    nx1_dom = 256
+    Nang       = 8
+    nx1_dom    = 256
+    ctrl_files = 1
     # parse keyword args
     for key in kwargs:
         if key == 'Nang':
             Nang    = kwargs[key]
         if key == 'nx1_dom':
             nx1_dom = kwargs[key]
+        if key == 'ctrl_files':
+            ctrl_files = kwargs[key]
+            nctrl      = len(ctrl_files)
 
     # set length of simulation from file list
     n    = len(files)
@@ -124,7 +131,7 @@ def init(quant, files, **kwargs):
     tarr = np.zeros(n)
 
     # choose quant
-    if quant != "vrot":
+    if quant != "vrot" and quant != "vcomp":
         mcR_arr = np.zeros(n)
         mcL_arr = np.zeros(n)
         
@@ -146,16 +153,17 @@ def init(quant, files, **kwargs):
               "    acc_rate = %1.3e [M_sun/Myr]\n"
               "     facvhvc = %1.3e [unitless] \n"
               "        ahvc = %1.3e [rad]\n" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
-        # Return quantities
+        # Set data
         if quant == "mcR":
-            return tarr, mcR_arr
+            data = mcR_arr
         elif quant == "mcL":
-            return tarr, mcL_arr
+            data = mcL_arr
         elif quant == "LoR":
-            return tarr, mcL_arr/mcR_arr
+            data = mcL_arr/mcR_arr
         else:
-            return tarr, mcR_arr/mcL_arr
-    else: 
+            data = mcR_arr/mcL_arr
+
+    elif quant == 'vrot': 
         vrot_arr = np.zeros((n,Nang,nx1_dom))
         for i in range(n):
             t, mhvc, rhvc, rpos,\
@@ -171,9 +179,50 @@ def init(quant, files, **kwargs):
               "        rpos = %1.3e [pc]\n"
               "    acc_rate = %1.3e [M_sun/Myr]\n"
               "     facvhvc = %1.3e [unitless] \n"
-              "        ahvc = %1.3e [rad]\n" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
+              "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
         data = (r, ang, vrot_arr)
-        return tarr, data
+    
+    elif quant == 'vcomp':
+        vrot_arr      = np.zeros((n    ,Nang,nx1_dom))
+        vrot_ctrl_arr = np.zeros((nctrl,Nang,nx1_dom))
+        for i in range(n):
+            # Read in simulation files
+            t, mhvc, rhvc, rpos,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
+            r, ang, vrot        = get_data(files[i]     , **kwargs)
+            
+            tarr[i]     = t
+            vrot_arr[i] = vrot
+        # print HVC parameters 
+        print("\n[init]: mhvc = %1.3e [M_sun]\n"
+              "        rhvc = %1.3e [pc]\n"
+              "        rpos = %1.3e [pc]\n"
+              "    acc_rate = %1.3e [M_sun/Myr]\n"
+              "     facvhvc = %1.3e [unitless] \n"
+              "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
+        
+        for i in range(nctrl):
+            # Read in ctrl files 
+            t, mhvc, rhvc, rpos,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
+            r, ang, vrot_ctrl   = get_data(ctrl_files[i], **kwargs)
+            
+            vrot_ctrl_arr[i] = vrot_ctrl 
+        
+        # This is a temporary fix to get rid of the high 
+        # variance due to different timesteps @ low r 
+        ncut = 100 
+        r             = r[ncut:]
+        vrot_arr      = vrot_arr[:,:,ncut:]
+        vrot_ctrl_arr = vrot_ctrl_arr[:,:,ncut:]
+        # Take the slice to avoid an array broadcasting error
+        if n > nctrl:
+            data = (r, ang, vrot_arr[0:nctrl]/vrot_ctrl_arr)   
+        else: # n < nctrl
+            data = (r, ang, vrot_arr/vrot_ctrl_arr[0:n])
+    return tarr, data
 
 #===============================
 # main()
@@ -201,8 +250,9 @@ def main():
                              "  mcL: mass w/in circleL\n"
                              "  RoL: mcR/mcL\n"
                              "  LoR: mcL/mcR\n"
-                             "  vrot: rotation curve\n")
-    parser.add_argument("--iang", dest="iang",type=int, default=None,
+                             " vrot: rotation curve\n"
+                             "vcomp: compare vrot to control sim\n")
+    parser.add_argument("--iang", dest="iang",type=int, default=0,
                         required=False,
                         help="Angle to plot if using vrot:\n"
                              "  [0-(Nang-1)]: index that corresponds to [0-305 deg]\n"
@@ -210,6 +260,9 @@ def main():
     parser.add_argument("--anim", dest="anim",action='store_true',
                         default=False,
                         help="Switch to do animation\n")
+    parser.add_argument("--iani", dest="iani",nargs=2,required=False,
+                        default=(0,n-1),type=int,
+                        help="Animate from frame iani[0] to iani[1]\n")
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=None,
                         help="Frame of simulation to plot:\n"
                              "  0: tsim = 0 \n"
@@ -228,27 +281,53 @@ def main():
     quant = args.quant
     iang  = args.iang
     anim  = args.anim
+    iani  = args.iani
     ifrm  = args.ifrm
     save  = args.save
-    
+
     # Conflicting argument checks 
     if iang > Nang:
         print("[main]: iang must be less than Nang!")
         quit()
-    if anim and args.quant != 'vrot':
-        print("[main]: only able to animate vrot!")
+    if anim and quant != 'vrot' and quant != 'vcomp':
+        print("[main]: only able to animate vrot and vcomp!")
         quit()
     if anim and ifrm != None:
-        print("[main]: specifying a single frame while animating"
-              "        doesn't make sense")
+        print("[main]: specifying a single frame while animating doesn't make sense")
         quit()
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
+
+    if quant == 'vcomp':
+        #ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
+        #             "sys_study/killdevil/m0/rc400/r1000/a0/fac0.5/"
+        ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
+                     "sys_study/m0.0/rc200/r500/a0.0/fac0.0/"
+        ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
+        nctrl      = len(ctrl_files)
+        if nctrl != n:
+            print("\n[main]: WARNING - no. of control files != no. of sim files\n"
+                  "          nctrl = %i, n = %i" %(nctrl, n))
+        print("\n[main]: Using control files located at:\n %s\n" % ctrl_path)
+        
+        # Get the data
+        tarr, data = init(quant, otf_files, prec=32,
+                          nx1_dom=nx1_dom,Nang=Nang,ctrl_files=ctrl_files)
     
-    # Get the data
-    tarr, data = init(quant, otf_files, prec=32, 
-                      nx1_dom=nx1_dom,Nang=Nang) 
+    else: 
+        # Get the data
+        tarr, data = init(quant, otf_files, prec=32, 
+                          nx1_dom=nx1_dom,Nang=Nang) 
+    
+    # Print out useful info 
+    print("       thvcs = %1.3e [Myr]\n"
+          "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
+
+    if anim:
+        print("[main]: Animating from t = %1.1f [Myr]\n" 
+              "                    to t = %1.1f [Myr]\n"
+                    %( tarr[iani[0]], tarr[iani[1]] ) )  
 
     #===== PLOTTING =============================================
     # set colors for lines
@@ -260,7 +339,7 @@ def main():
     # set ylabel
     ystr = get_ylabel(quant)
     # for the mass stuff
-    if quant != 'vrot':
+    if quant != 'vrot' and quant != 'vcomp':
         # Do plotting
         plt.figure(figsize=(10,8))
         plt.plot(tarr, data)
@@ -288,10 +367,14 @@ def main():
             if ifrm is not None:
                 t = tarr[ifrm]
                 # loop over axes and angles
-                for i in range(Nang):
-                    axs[i].plot(r, vrot[ifrm,i],color=c[i],
-                                  label='$\\theta$ = %1.1f$^\\circ$' % ang[i])
-                    axs[i].legend(loc=4)
+                for iang in range(Nang):
+                    axs[iang].plot(r, vrot[ifrm,iang],color=c[iang],
+                                  label='$\\theta$ = %1.1f$^\\circ$' % ang[iang])
+                    axs[iang].legend(loc=4,prop={'size': 10})
+                    # Set the plotting range 
+                    axs[iang].set_ylim(0.9*np.min(vrot[iani[0]:iani[1],:]),
+                                       1.1*np.max(vrot[iani[0]:iani[1],:]) )
+
                 # make labels 
                 # xlabels
                 axs[-2].set_xlabel(xstr)
@@ -312,7 +395,11 @@ def main():
                 
                 # Make time independent labels
                 for iang in range(Nang):
-                    axs[iang].legend(loc=4)
+                    axs[iang].legend(loc=2, prop={'size': 10})
+                    # Set the plotting range 
+                    axs[iang].set_ylim(0.9*np.min(vrot[iani[0]:iani[1],:]),
+                                       1.1*np.max(vrot[iani[0]:iani[1],:]) )
+
                 axs[-2].set_xlabel(xstr)
                 axs[-1].set_xlabel(xstr)
                 # common ylabel
@@ -328,7 +415,7 @@ def main():
                     return lines
                 
                 # do the animation
-                ani = animation.FuncAnimation(fig, animate, range(n), repeat=False)
+                ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
                 if save:
                     print("[main]: Saving animation")
                     ani.save(quant+".mp4")
@@ -357,11 +444,14 @@ def main():
                 line, = ax.plot(r, vrot[0,iang], color=c[iang], 
                         label='$\\theta$ = %1.1f$^\\circ$' % ang[iang])   
                 ax.legend(loc=4)
+                # Set the plotting range for the whole animation 
+                ax.set_ylim(0.9*np.min(vrot[iani[0]:iani[1],iang]),
+                            1.1*np.max(vrot[iani[0]:iani[1],iang]) )
                 def animate(ifrm):
                     line.set_ydata(vrot[ifrm,iang])
                     ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                     return line,
-                ani = animation.FuncAnimation(fig, animate, range(n), repeat=False)
+                ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
                 if save:
                     print("[main]: Saving animation")
                     ani.save(quant+str(iang)+".mp4")
