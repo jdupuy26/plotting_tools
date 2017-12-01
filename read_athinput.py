@@ -25,6 +25,7 @@ import sys
                    nx3          : number of x2 zones
                    x1min        : minimum x1 
                    x1max        : maximum x1
+                   ilog         : switch for log grid 
                    x1rat        : ratio of each cell to the next cell in x1
                    x2min        : minimum x2
                    x2max        : maximum x2
@@ -66,6 +67,7 @@ def readath(fl):
             self.nx3=0
             self.x1min=0
             self.x1max=0
+            self.ilog=0
             self.x1rat=0
             self.x2min=0
             self.x2max=0
@@ -85,8 +87,8 @@ def readath(fl):
             self.thvcs=0
             self.thvce=0
         def __repr__(self):
-            return "<athparams level:%s nx1:%s nx2=%s nx3=%s x1min=%s x1max=%s x1rat=%s x2min=%s x2max=%s x3min=%s x3max=%s ngridx1=%s ngridx2=%s ngridx3=%s idisp=%s jdisp=%s kdisp=%s gamma=%s iso_csound=%s omg=%s \
-                     gam=%s mu=%s scaleh=%s Nang=%s thvcs=%s thvce=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.x1rat,self.x2min,self.x2max,
+            return "<athparams level:%s nx1:%s nx2=%s nx3=%s x1min=%s x1max=%s ilog=%s x1rat=%s x2min=%s x2max=%s x3min=%s x3max=%s ngridx1=%s ngridx2=%s ngridx3=%s idisp=%s jdisp=%s kdisp=%s gamma=%s iso_csound=%s omg=%s \
+                     gam=%s mu=%s scaleh=%s Nang=%s thvcs=%s thvce=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.ilog,self.x1rat,self.x2min,self.x2max,
                                                                            self.x3min,self.x3max,self.ngridx1,self.ngridx2,self.ngridx3,self.idisp,self.jdisp,self.kdisp,
                                                                            self.omg,self.gam,self.mu,self.scaleh,self.Nang,self.thvcs,self.thvce)
 
@@ -160,6 +162,8 @@ def readath(fl):
                     params[i-1].x1min   = float(splitline[2])
                 if splitline[0] == 'x1max':
                     params[i-1].x1max   = float(splitline[2])
+                if splitline[0] == 'ilog':
+                    params[i-1].ilog    = float(splitline[2])
                 if splitline[0] == 'x1rat':
                     params[i-1].x1rat   = float(splitline[2])
                 if splitline[0] == 'x2min':
