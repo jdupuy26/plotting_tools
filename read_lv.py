@@ -72,11 +72,24 @@ def readbin(fl,precision, **kwargs):
     # construct velocity, longitude array
     lvals = np.linspace(minl   ,maxl   ,nlong )
     vvals = np.linspace(minvlos,maxvlos,nvbins)
+    
+    # Get extent
+    dl = lvals[1]-lvals[0]
+    dv = vvals[1]-vvals[0]
+    
+    mnl = minl-0.5*dl
+    mxl = maxl+0.5*dl
+    mnv = minvlos-dv
+    mxv = maxvlos+dv
+    
     file.close()
 
-    print(lvdiag) 
-    
-    plt.imshow(lvdiag.T, origin='lower', extent=[minl,maxl,minvlos,maxvlos],aspect='auto')
+    print(t)
+
+    plt.imshow(lvdiag.T, origin='lower', 
+               extent=[mnl,mxl,mnv,mxv],
+               aspect='auto',cmap='viridis',interpolation='None')
+    plt.colorbar()
     #plt.savefig('nompi.eps')
     plt.show()
     return t, lvals, vvals, lvdiag
