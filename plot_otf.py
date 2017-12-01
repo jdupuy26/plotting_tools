@@ -9,11 +9,23 @@ from argparse import RawTextHelpFormatter
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.pyplot import cm
+
 # Import from correct directory
-sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/'
+import socket as s
+comp = s.gethostname()
+if comp == 'thetis': 
+    sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/'
                   'jdupuy26/Johns_work/'
                   'misc_scripts/plotting_tools')
-import read_otf as rotf
+elif comp == 'debpad':
+    sys.path.insert(0,'/home/jdupuy26/Johns_work/'
+                      'Grad_Work/Research/codes/'
+                      'athena/misc_scripts/'
+                      'plotting_tools')
+else: 
+    print('[init]: Computer %s not recognized!' % comp)
+
+from read_bin import read_otf as rotf
 import read_athinput
 from units_class import * 
 
@@ -31,7 +43,7 @@ from units_class import *
 #  Author: John Dupuy 
 #          UNC Chapel Hill
 #  Date:    11/07/17
-#  Updated: 11/14/17 
+#  Updated: 12/01/17 
 #=====================================================
 
 #============FUNCTIONS===========
@@ -64,7 +76,7 @@ def get_data(file,**kwargs):
     t, mhvc, rhvc, rpos,\
     acc_rate, facvhvc, ahvc,\
     mcR, mcL,\
-    r, ang, vrot = rotf.readbin(file,prec, **kwargs)
+    r, ang, vrot = rotf(file,prec, **kwargs)
 
     if iunit == 1: 
         u = units_CGS()
