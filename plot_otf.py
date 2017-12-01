@@ -191,7 +191,7 @@ def init(quant, files, **kwargs):
             acc_rate, facvhvc, ahvc,\
             mcR, mcL,\
             r, ang, vrot        = get_data(files[i]     , **kwargs)
-            
+
             tarr[i]     = t
             vrot_arr[i] = vrot
         # print HVC parameters 
@@ -201,7 +201,8 @@ def init(quant, files, **kwargs):
               "    acc_rate = %1.3e [M_sun/Myr]\n"
               "     facvhvc = %1.3e [unitless] \n"
               "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
-        
+       
+        tctrl = np.zeros(nctrl) 
         for i in range(nctrl):
             # Read in ctrl files 
             t, mhvc, rhvc, rpos,\
@@ -209,11 +210,11 @@ def init(quant, files, **kwargs):
             mcR, mcL,\
             r, ang, vrot_ctrl   = get_data(ctrl_files[i], **kwargs)
             
+            tctrl[i]         = t
             vrot_ctrl_arr[i] = vrot_ctrl 
-        
         # This is a temporary fix to get rid of the high 
         # variance due to different timesteps @ low r 
-        ncut = 100 
+        ncut = 0 
         r             = r[ncut:]
         vrot_arr      = vrot_arr[:,:,ncut:]
         vrot_ctrl_arr = vrot_ctrl_arr[:,:,ncut:]
@@ -222,6 +223,7 @@ def init(quant, files, **kwargs):
             data = (r, ang, vrot_arr[0:nctrl]/vrot_ctrl_arr)   
         else: # n < nctrl
             data = (r, ang, vrot_arr/vrot_ctrl_arr[0:n])
+    
     return tarr, data
 
 #===============================
@@ -240,6 +242,9 @@ def main():
 
     # Get otf files 
     otf_files = get_files(athdir,'id0','*.otf.*')
+    # Sort them
+    otf_files.sort()
+    
     n   = len(otf_files)
 
     # Read in system arguments
@@ -302,9 +307,10 @@ def main():
     if quant == 'vcomp':
         #ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
         #             "sys_study/killdevil/m0/rc400/r1000/a0/fac0.5/"
-        ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
-                     "sys_study/m0.0/rc200/r500/a0.0/fac0.0/"
+        ctrl_path  = "/srv/scratch/jdupuy26/sim_files/hvc_coll/"+\
+                     "sys_study/demo1/cfl0.2/m0.0/rc250/r3500/a0.0/fac0.0/"
         ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
+        ctrl_files.sort()
         nctrl      = len(ctrl_files)
         if nctrl != n:
             print("\n[main]: WARNING - no. of control files != no. of sim files\n"
