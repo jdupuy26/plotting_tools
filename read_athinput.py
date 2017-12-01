@@ -40,11 +40,18 @@ import sys
                    gam          : Gamma value (C_P/C_V)
                    mu           : mean molecular weight
                    scaleh       : scale height [pc] 
+                   Nang         : no. of angles for analysis 
+                   thvcs        : start time of hvc accretion [Myr]
+                   thvce        : end time of hvc accretion [Myr] 
                  }
         JLD edited: (9/3/17) 
                     get x1rat and omg from athinput 
                     (10/11/17)
                     get mu, gam, and scaleh from athinput 
+                    (11/8/17)
+                    get Nang for no. of angles of analysis
+                    (11/14/17)
+                    get thvcs, thvce
 
 """
 #==========================================
@@ -74,10 +81,14 @@ def readath(fl):
             self.gam=0
             self.mu=0
             self.scaleh=0
+            self.Nang=0
+            self.thvcs=0
+            self.thvce=0
         def __repr__(self):
             return "<athparams level:%s nx1:%s nx2=%s nx3=%s x1min=%s x1max=%s x1rat=%s x2min=%s x2max=%s x3min=%s x3max=%s ngridx1=%s ngridx2=%s ngridx3=%s idisp=%s jdisp=%s kdisp=%s gamma=%s iso_csound=%s omg=%s \
-                     gam=%s mu=%s scaleh=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.x1rat,self.x2min,self.x2max,self.x3min,self.x3max,
-                                                 self.ngridx1,self.ngridx2,self.ngridx3,self.idisp,self.jdisp,self.kdisp,self.omg,self.gam,self.mu,self.scaleh)
+                     gam=%s mu=%s scaleh=%s Nang=%s thvcs=%s thvce=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.x1rat,self.x2min,self.x2max,
+                                                                           self.x3min,self.x3max,self.ngridx1,self.ngridx2,self.ngridx3,self.idisp,self.jdisp,self.kdisp,
+                                                                           self.omg,self.gam,self.mu,self.scaleh,self.Nang,self.thvcs,self.thvce)
 
 
     #Read in athinput file into array of lines
@@ -179,6 +190,12 @@ def readath(fl):
                     params[i-1].mu      = float(splitline[2])
                 if splitline[0] == 'scaleh':
                     params[i-1].scaleh  = float(splitline[2])
+                if splitline[0] == 'Nang':
+                    params[i-1].Nang    = float(splitline[2])
+                if splitline[0] == 'thvcs':
+                    params[i-1].thvcs   = float(splitline[2])
+                if splitline[0] == 'thvce':
+                    params[i-1].thvce   = float(splitline[2])
 
         check=0 
 
