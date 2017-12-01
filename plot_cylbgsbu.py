@@ -19,9 +19,22 @@ from scipy.ndimage import map_coordinates
 from scipy.stats import binned_statistic
 from scipy.ndimage.filters import gaussian_filter, uniform_filter
 
-# This will allow us to use 'read_athena_bin' and 'read_athinput' on THETIS 
-sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/misc_scripts/plotting_tools')
-import read_athena_bin
+# Import from correct directory
+import socket as s
+comp = s.gethostname()
+if comp == 'thetis': 
+    sys.path.insert(0,'/afs/cas.unc.edu/users/j/d/'
+                      'jdupuy26/Johns_work/'
+                      'misc_scripts/plotting_tools')
+elif comp == 'debpad':
+    sys.path.insert(0,'/home/jdupuy26/Johns_work/'
+                      'Grad_Work/Research/codes/'
+                      'athena/misc_scripts/'
+                      'plotting_tools')
+else: 
+    print('[init]: Computer %s not recognized!' % comp) 
+
+from read_bin import read_bin as read_athena_bin
 import read_athinput
 # import units class 
 from units_class import * 
@@ -174,7 +187,7 @@ def get_xyzt(file,units):
     nx,ny,nz,x,y,z,\
     d,Mx,My,Mz,e,ie,s,\
     bx,by,bz,phi, \
-    gamm1,cs,t,dt,nscalars = read_athena_bin.readbin(file,precision)
+    gamm1,cs,t,dt,nscalars = read_athena_bin(file,precision)
  
     #if   units == 1:
     #    u = units_CGS()
@@ -193,7 +206,7 @@ def get_quant(file,quant,units):
     nx,ny,nz,x,y,z,\
     d,Mx,My,Mz,e,ie,s,\
     bx,by,bz,phi, \
-    gamm1,cs,t,dt,nscalars = read_athena_bin.readbin(file,precision)
+    gamm1,cs,t,dt,nscalars = read_athena_bin(file,precision)
     
     # Set units
     
@@ -1033,7 +1046,10 @@ if args.cyl or args.p2c or args.proj or args.quant == 'div_v' or args.quant == '
 # Create cell centered array for x1
     r   = np.zeros(nx1)
     ri[0] = mn1
-    x1rat = params[0].x1rat
+    if int(params[0].ilog) == 0:
+        x1rat = params[0].x1rat
+    else:
+        x1rat = np.power(mx1/mn1, 1.0/float(nx1))
     print 'x1rat = ', x1rat
     dx1[0] = (mx1-mn1)*(x1rat-1.0)/(x1rat**float(nx1)-1.0)
     for i in range(1,len(ri)):
