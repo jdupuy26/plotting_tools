@@ -55,13 +55,15 @@ def readbin(fl,precision, **kwargs):
     file.seek(0,0)
 
     # Read dat
-    dat = np.fromfile(file,dtype=prec,count=5)
+    dat = np.fromfile(file,dtype=prec,count=7)
     # Parse dat
     t        = dat[0]   # [Myr]
     mhvc     = dat[1]   # [M_sun]
     rhvc     = dat[2]   # [pc]
     rpos     = dat[3]   # [pc]
     acc_rate = dat[4]   # [M_sun/Myr]
+    facvhvc  = dat[5]   # [dimensionless]
+    ahvc     = dat[6]   # [radians]
     
     # Read scal [M_sun] 
     scal = np.fromfile(file,dtype=prec,count=2)
@@ -81,5 +83,6 @@ def readbin(fl,precision, **kwargs):
 
     file.close()
     return t, mhvc, rhvc, rpos,\
-           acc_rate, mcR, mcL,\
-           r, ang, vrot  
+           acc_rate, facvhvc, ahvc,\
+           mcR, mcL,\
+           r, ang, vrot
