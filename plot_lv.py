@@ -89,11 +89,20 @@ def get_data(file,**kwargs):
     return t, lvals, vvals, lvdiag
 
 #================================
+# get_log function
+def get_log(data):
+    data[ data <= 0] = 1e-20
+    data = np.log10(data)
+    return data 
+
+#================================
 # get_title() function
-def get_title(quant):
+def get_title(quant,nolog):
     lab = 'def'
     if quant == 'lv':
         lab = 'Intensity of HI emission'
+    if not nolog:
+        lab = 'log('+lab+')'
     return lab
 
 #================================
@@ -140,11 +149,9 @@ def init(quant, files, **kwargs):
             tarr[i]     = t
             vvals.append(v)
             lvdiags.append(lv) 
-        
         # lvals doesn't change w/ time 
         lvals   = l 
 
-    
     return tarr, lvals, vvals, lvdiags 
 
 
@@ -177,6 +184,8 @@ def main():
     parser.add_argument("--iani", dest="iani",nargs=2,required=False,
                         default=(0,n-1),type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
+    parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
+                        default=(-2,2),type=float)
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=None,
                         help="Frame of simulation to plot:\n"
                              "  0: tsim = 0 \n"
@@ -189,14 +198,19 @@ def main():
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
                         help="Switch to save anim or figure")
+    parser.add_argument("--nolog",dest="nolog",action='store_true',
+                        default=False,
+                        help="Switch to take log of intensity, default is False")
 
     # parsing arguments            
     args  = parser.parse_args()
     quant = args.quant
     anim  = args.anim
     iani  = args.iani
+    qmin, qmax = args.qminmax[0], args.qminmax[1] 
     ifrm  = args.ifrm
     save  = args.save
+    nolog = args.nolog
 
     # Conflicting argument checks 
     if anim and ifrm != None:
@@ -210,7 +224,7 @@ def main():
     tarr, lvals, vvals, lvdiags = init(quant,lv_files,prec=prec)
 
         # Get labels 
-    title = get_title(quant)
+    title = get_title(quant,nolog)
     xlab  = get_xlabel(quant)
     ylab  = get_ylabel(quant)
 
@@ -232,11 +246,19 @@ def main():
         mxl = lvals[-1] + 0.5*dl
         mnv = vvals[iani[0]][ 0] - 0.5*dv
         mxv = vvals[iani[1]][-1] + 0.5*dv
+        
+        # set mnv, mxv for whole animation
+        mnv0 = 0.9*mnv 
+        mxv0 = 0.9*mxv
+        
+        if not nolog:
+            lvdiags[iani[0]] = get_log(lvdiags[iani[0]])
 
         im = ax1.imshow(lvdiags[iani[0]], extent=[mnl,mxl,mnv,mxv],
-                        origin='lower',aspect='auto')
+                        origin='lower',aspect='auto',
+                        vmin = qmin, vmax = qmax)
         ax1.set_xlim(mnl,mxl)
-        ax1.set_ylim(mnv,mxv)
+        ax1.set_ylim(mnv0,mxv0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
         ax1.set_title('t = %1.1f [Myr]' % tarr[0]) 
@@ -245,27 +267,40 @@ def main():
         cax  = div.append_axes('right', '5%', '5%')
         cbar = fig.colorbar(im,label=title, cax=cax)
 
+        def anim_init():
+            pass
 
         def animate(ifrm):
+            # Clear the axes
+            ax1.cla()
+            # update mnv, mxv
             dv  = vvals[ifrm][1 ] - vvals[ifrm][0]
             mnv = vvals[ifrm][ 0] - 0.5*dv
             mxv = vvals[ifrm][-1] + 0.5*dv
-            # Update ylim
-            ax1.set_ylim(mnv,mxv)
             # update title
             ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+            if ifrm != 0:
+                if not nolog:
+                    lvdiags[ifrm] = get_log(lvdiags[ifrm])
             # make the plot
             im = ax1.imshow(lvdiags[ifrm], extent=[mnl,mxl,mnv,mxv],
-                        origin='lower',aspect='auto')
+                        origin='lower',aspect='auto',
+                        vmin = qmin, vmax = qmax, interpolation='nearest')
+            # Make sure the axes stay the same
+            ax1.set_ylim(mnv0,mxv0)
+            # Clear colorbar
             cax.cla()
+            # Make new colorbar
             fig.colorbar(im,label=title,cax=cax)
 
-            return im 
+            return #[im] 
         # do the animation
-        ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
+        ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), 
+                                          init_func=anim_init,repeat=False)
         if save:
             print("[main]: Saving animation")
-            ani.save(quant+".mp4")
+            #ani.save(quant+".gif",writer='imagemagick')
+            ani.save(quant+".avi")
     else:
         # Get spacing
         dl = lvals[1] - lvals[0]
@@ -276,8 +311,12 @@ def main():
         mnv = vvals[ifrm][ 0] - 0.5*dv
         mxv = vvals[ifrm][-1] + 0.5*dv
 
+        if not nolog:
+            lvdiags[ifrm] = get_log(lvdiags[ifrm])
+
         im = ax1.imshow(lvdiags[ifrm], extent=[mnl,mxl,mnv,mxv],
-                        origin='lower',aspect='auto')
+                        origin='lower',aspect='auto',
+                        vmin = qmin,vmax = qmax)
         ax1.set_xlim(mnl,mxl)
         ax1.set_ylim(mnv,mxv)
         ax1.set_xlabel(xlab)
@@ -296,8 +335,5 @@ def main():
         plt.show()
     #================================================================================#
             
-
-
-        
 main()
 
