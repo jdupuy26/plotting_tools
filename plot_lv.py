@@ -39,12 +39,12 @@ from units_class import *
 #
 #  Keywords: python plot_lv.py -h  
 #
-#  Usage: python plot_lv.py quant (--ifrm, --anim, --iani) --iang  
+#  Usage: python plot_lv.py quant (--ifrm, --anim, --iani)   
 #          
 #  Author: John Dupuy 
 #          UNC Chapel Hill
 #  Date:    12/01/17
-#  Updated: 12/01/17 
+#  Updated: 12/04/17 
 #=====================================================
 
 #============FUNCTIONS===========
@@ -279,7 +279,7 @@ def main():
             mxv = vvals[ifrm][-1] + 0.5*dv
             # update title
             ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm])
-            if ifrm != 0:
+            if ifrm != iani[0]:
                 if not nolog:
                     lvdiags[ifrm] = get_log(lvdiags[ifrm])
             # make the plot
