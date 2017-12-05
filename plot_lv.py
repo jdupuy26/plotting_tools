@@ -31,6 +31,9 @@ from read_bin import read_lv as rlv
 import read_athinput
 from units_class import * 
 
+# Set the colormap
+plt.rcParams['image.cmap'] = 'magma'
+
 #=====================================================
 #
 #  Code: plot_lv.py
@@ -185,7 +188,8 @@ def main():
                         default=(0,n-1),type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
     parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
-                        default=(-2,2),type=float)
+                        default=(-2,2),type=float,
+                        help="Min/max value for imshow")
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=None,
                         help="Frame of simulation to plot:\n"
                              "  0: tsim = 0 \n"
@@ -198,6 +202,11 @@ def main():
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
                         help="Switch to save anim or figure")
+    parser.add_argument("--interp",dest="interp",type=str,default='None',
+                        help="What type of interpolation for imshow?\n" 
+                             "Default is 'None', cf. \n"
+                             "https://matplotlib.org/devdocs/gallery/"
+                             "images_contours_and_fields/interpolation_methods.html\n")
     parser.add_argument("--nolog",dest="nolog",action='store_true',
                         default=False,
                         help="Switch to take log of intensity, default is False")
@@ -211,6 +220,7 @@ def main():
     ifrm  = args.ifrm
     save  = args.save
     nolog = args.nolog
+    interp= args.interp
 
     # Conflicting argument checks 
     if anim and ifrm != None:
@@ -219,7 +229,7 @@ def main():
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
-
+    
     # Get the data
     tarr, lvals, vvals, lvdiags = init(quant,lv_files,prec=prec)
 
@@ -232,6 +242,9 @@ def main():
         print("[main]: Animating from t = %1.1f [Myr]\n" 
               "                    to t = %1.1f [Myr]\n"
                     %( tarr[iani[0]], tarr[iani[1]] ) )  
+    if interp != 'None':
+        print("[main]: Interpolation is on! Using %s to"
+              " interpolate\n" %( interp ) )
     # Open figure
     fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
     ax1 = fig.add_subplot(111)
@@ -256,7 +269,8 @@ def main():
 
         im = ax1.imshow(lvdiags[iani[0]], extent=[mnl,mxl,mnv,mxv],
                         origin='lower',aspect='auto',
-                        vmin = qmin, vmax = qmax)
+                        vmin = qmin, vmax = qmax,
+                        interpolation = interp)
         ax1.set_xlim(mnl,mxl)
         ax1.set_ylim(mnv0,mxv0)
         ax1.set_xlabel(xlab)
@@ -285,7 +299,8 @@ def main():
             # make the plot
             im = ax1.imshow(lvdiags[ifrm], extent=[mnl,mxl,mnv,mxv],
                         origin='lower',aspect='auto',
-                        vmin = qmin, vmax = qmax, interpolation='nearest')
+                        vmin = qmin, vmax = qmax, 
+                        interpolation=interp)
             # Make sure the axes stay the same
             ax1.set_ylim(mnv0,mxv0)
             # Clear colorbar
@@ -316,7 +331,8 @@ def main():
 
         im = ax1.imshow(lvdiags[ifrm], extent=[mnl,mxl,mnv,mxv],
                         origin='lower',aspect='auto',
-                        vmin = qmin,vmax = qmax)
+                        vmin = qmin,vmax = qmax,
+                        interpolation = interp)
         ax1.set_xlim(mnl,mxl)
         ax1.set_ylim(mnv,mxv)
         ax1.set_xlabel(xlab)
