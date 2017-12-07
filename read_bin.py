@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import numpy as np
 import sys
+import matplotlib.pyplot as plt
 
 # This file contains all the functions to read binary files 
 # dumped by Athena, including user-enrolled binary dumps
@@ -292,4 +293,72 @@ def read_lv(fl,precision, **kwargs):
     file.close()
 
     return t, lvals, vvals, lvdiag.T
+
+#=====================================================
+#
+#  Function: read_sii
+#
+#  Purpose: Open/Read "sii" binary files produced in
+#           from simulations and plot results
+#
+#  Keywords: file - athena sii binary file to be opened
+#                   (e.g. bar.0000.sii.bin)
+#   (these are always written to root directory - id0)
+#
+#  Usage: import read_bin
+#         read_bin.read_sii(fl,precision) 
+#
+#          
+#  Author: John Dupuy 
+#          UNC Chapel Hill
+#  Date:   11/28/17
+#=====================================================
+# Read binary file 
+def read_sii(fl,precision, **kwargs):
+    
+    try: 
+        file = open(fl,'rb')
+    except:
+        print('[read_sii]: failed to supply input file')
+        quit()
+    
+    if precision==32:
+        prec=np.float32
+    elif precision==64:
+        prec=np.float64
+    else:
+        print('[read_sii]: Invalid precision input')
+        quit()
+    
+    file.seek(0,2)
+    eof = file.tell()
+    file.seek(0,0)
+
+    # Read Nx, Ny
+    integ = np.fromfile(file,dtype=np.uint32,count=2)
+    Nx = integ[0]
+    Ny = integ[1] 
+
+    # Read dat
+    dat = np.fromfile(file,dtype=prec,count=5)
+    # Parse dat
+    t        = dat[0]   # [Myr]
+    minx     = dat[1]   # [pc]   
+    maxx     = dat[2]   # [pc]
+    miny     = dat[3]   # [pc]
+    maxy     = dat[4]   # [pc]
+       
+    # Read sii grid
+    griddata = np.zeros((Ny,Nx))
+    for j in range(Ny):
+         griddata[j] = np.fromfile(file,dtype=prec,count=Nx)
+
+    # construct x,y arrays
+    x = np.linspace(minx, maxx, Nx)
+    y = np.linspace(miny, maxy, Ny)
+
+    
+    file.close()
+
+    return t, x, y, griddata 
 
