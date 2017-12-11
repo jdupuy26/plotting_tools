@@ -81,7 +81,11 @@ def get_data(file,**kwargs):
         if key == 'quant':
             quant = kwargs[key]
     if quant == 'lv':
-        t, x, y, data = read_lv(file,prec, **kwargs)
+        t, x, y, lv, lvc = read_lv(file,prec, **kwargs)
+        data = lv
+    elif quant == 'lvc':
+        t, x, y, lv, lvc = read_lv(file,prec, **kwargs)
+        data = lvc
     elif quant == 'sii':
         t, x, y, data = read_sii(file,prec,**kwargs)
 
@@ -108,10 +112,10 @@ def get_log(data):
 # get_title() function
 def get_title(quant,nolog):
     lab = 'def'
-    if quant == 'lv':
+    if quant == 'lv' or quant == 'lvc':
         lab = 'Intensity of HI emission'
     elif quant == 'sii':
-        lab = 'Intensit of [SII] emission'
+        lab = 'Intensity of [SII] emission'
     if not nolog:
         lab = 'log('+lab+')'
     return lab
@@ -120,7 +124,7 @@ def get_title(quant,nolog):
 # get_xlabel() function
 def get_xlabel(quant):
     lab = 'def'
-    if quant == 'lv':
+    if quant == 'lv' or quant == 'lvc':
         lab = 'l [deg]'
     elif quant == 'sii':
         lab = 'x [pc]'
@@ -130,7 +134,7 @@ def get_xlabel(quant):
 # get_ylabel() function
 def get_ylabel(quant):
     lab = 'def'
-    if quant == 'lv':
+    if quant == 'lv' or quant == 'lvc':
         lab = 'v [km/s]'
     elif quant == 'sii':
         lab = 'y [pc]'
@@ -140,7 +144,7 @@ def get_ylabel(quant):
 # get_aspect() function
 def get_aspect(quant):
     asp = None
-    if quant =='lv':
+    if quant =='lv' or quant == 'lvc':
         asp = 'auto'
     return asp
 
@@ -158,8 +162,6 @@ def init(quant, files, **kwargs):
     n    = len(files)
     # setup time array
     tarr = np.zeros(n)
-
-    # choose quant
 
     # setup lists to store data
     grdt  = []
@@ -233,7 +235,11 @@ def main():
     interp= args.interp
 
     # Get otf files 
-    files = get_files(athdir,'id0','*.'+quant+'.*')
+    if quant == 'lv' or quant == 'lvc':
+        files = get_files(athdir,'id0','*.lv.*')
+    else:
+        files = get_files(athdir,'id0','*.'+quant+'.*')
+    
     # Sort them
     files.sort()
     # Get total number of files 
@@ -270,7 +276,7 @@ def main():
     fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
     ax1 = fig.add_subplot(111)
     
-    # Handxe animation
+    # Handle animation
     if anim:
         # Get spacing
         dx = x[1] - x[0]
@@ -294,8 +300,8 @@ def main():
                         interpolation = interp)
         
         ax1.set_xlim(mnx,mxx)
-        if quant == 'lv':
-            ax1.set_ylim(mny0,mxy0)
+        #if quant == 'lv':
+        #    ax1.set_ylim(mny0,mxy0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
         ax1.set_title('t = %1.1f [Myr]' % tarr[iani[0]]) 
