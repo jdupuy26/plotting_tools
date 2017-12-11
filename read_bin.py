@@ -262,11 +262,11 @@ def read_lv(fl,precision, **kwargs):
     file.seek(0,0)
 
     # Read integ
-    integ = np.fromfile(file,dtype=np.uint32,count=2)
-    nlong, nvbins = integ[0], integ[1]
+    integ = np.fromfile(file,dtype=np.uint32,count=3)
+    nlong, nvbins, ntracer = integ[0], integ[1], integ[2]
 
     # Read dat
-    dat = np.fromfile(file,dtype=prec,count=7)
+    dat = np.fromfile(file,dtype=prec,count=5)
     # Parse dat
     t        = dat[0]   # [Myr]
     minvlos  = dat[1]   
@@ -276,10 +276,11 @@ def read_lv(fl,precision, **kwargs):
 
        
     # Read lv diagram
-    lvdiag = np.zeros((nlong,nvbins))
-    for i in range(nlong):
-        lvdiag[i] = np.fromfile(file,dtype=prec,count=nvbins)
-
+    lv = np.zeros((ntracer,nlong,nvbins))
+    for it in range(ntracer):
+        for i in range(nlong):
+            lv[it][i]   = np.fromfile(file,dtype=prec,count=nvbins)
+    
     # construct velocity, longitude array
     lvals = np.linspace(minl   ,maxl   ,nlong )
     # Handle case where no gas has T < 1e4
@@ -292,7 +293,7 @@ def read_lv(fl,precision, **kwargs):
     
     file.close()
 
-    return t, lvals, vvals, lvdiag.T
+    return t, lvals, vvals, lv[0].T, lv[1].T
 
 #=====================================================
 #
@@ -347,7 +348,7 @@ def read_sii(fl,precision, **kwargs):
     maxx     = dat[2]   # [pc]
     miny     = dat[3]   # [pc]
     maxy     = dat[4]   # [pc]
-       
+
     # Read sii grid
     griddata = np.zeros((Ny,Nx))
     for j in range(Ny):
