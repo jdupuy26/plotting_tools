@@ -1427,23 +1427,29 @@ for imnum in range(top+1):
                 # If plotting div V
                 elif args.quant == 'div_v':
                     
-                    img_vr = polar2cartesian(r, th_cent, img_vr, x_grid, y_grid)
-                    img_vp = polar2cartesian(r, th_cent, img_vp, x_grid, y_grid)
+                    #img_vr = polar2cartesian(r, th_cent, img_vr, x_grid, y_grid)
+                    #img_vp = polar2cartesian(r, th_cent, img_vp, x_grid, y_grid)
 
-                    img_vx, img_vy = vel_p2c(img_vr, img_vp, x_grid, y_grid)
+                    #img_vx, img_vy = vel_p2c(img_vr, img_vp, x_grid, y_grid)
                     
                     # Take the divergence 
-                    gradx = img_vx[2:,2:] - img_vx[:-2,:-2]
-                    grady = img_vy[2:,2:] - img_vy[:-2,:-2]
+                    #gradx = img_vx[2:,2:] - img_vx[:-2,:-2]
+                    #grady = img_vy[2:,2:] - img_vy[:-2,:-2]
+                   
+                    grad_r = img_vr[1:,1:] - img_vr[1:,:-1] 
+                    grad_p = img_vp[1:,1:] - img_vp[:-1,1:]
+
+                    div_v = grad_r + grad_p
                     
-                    div_v = gradx + grady
-                    if args.units == 0:
-                        u = units_CGS()
-                        div_v *= u.v/1e5 # convert to km/s
-                    elif args.units == 1:
-                        div_v /= 1e5  # convert to km/s
-                    else: 
-                        div_v /= 1e3  # convert to km/s
+                    div_v = polar2cartesian(r[1:], th_cent[1:], div_v, x_grid, y_grid)
+                    #div_v = gradx + grady
+                    #if args.units == 0:
+                     #   u = units_CGS()
+                     #   div_v *= u.v/1e5 # convert to km/s
+                    #elif args.units == 1:
+                     #   div_v /= 1e5  # convert to km/s
+                    #else: 
+                      #  div_v /= 1e3  # convert to km/s
 
                     #div_v[np.sqrt(x_grid[1:-1]**2 + y_grid[1:-1]**2) > 4000.] = 0.0
 
@@ -1456,15 +1462,15 @@ for imnum in range(top+1):
                     minval = div_v.min()
                         
                     # only negative values contribute to emission
-                    div_v[div_v > 0] = 0.
-                    div_v = abs(div_v)
+                    #div_v[div_v > 0] = 0.
+                    #div_v = abs(div_v)
 
-                    div_v[div_v < 10] = 0.
-                    div_v[(div_v > 10) & (div_v < 20)] = 1.
-                    div_v[(div_v > 20) & (div_v < 30)] = 2.
-                    div_v[(div_v > 30) & (div_v < 40)] = 3.
+                    #div_v[div_v < 10] = 0.
+                    #div_v[(div_v > 10) & (div_v < 20)] = 1.
+                    #div_v[(div_v > 20) & (div_v < 30)] = 2.
+                    #div_v[(div_v > 30) & (div_v < 40)] = 3.
                     #div_v[(div_v > 10) & (div_v < 100)] =  9.*(div_v[(div_v > 10) & (div_v < 100)]/div_v[(div_v > 10) & (div_v < 100)].max())
-                    div_v[div_v > 40] = 4. 
+                    #div_v[div_v > 40] = 4. 
                         
                     # apply filter
                     pixel_size     = (x_grid[-1]-x_grid[0])/len(x_grid)
@@ -1474,14 +1480,14 @@ for imnum in range(top+1):
                     
                     #div_v = gaussian_filter(div_v,sigma)  # gives smoothing 
                     
-                    maxval = div_v.max()
-                    minval = div_v.min()
+                    maxval = 2. # div_v.max()
+                    minval = -2. #div_v.min()
 
                     im = ax1.imshow(div_v, interpolation='None',
                                             origin='lower',
                                             extent = [mn1,mx1,mn2,mx2],
                                             vmin=minval,vmax=maxval)
-                    ax1.set_xlim(-1.4,1.4)
+                    ax1.set_xlim(-1.5,1.5)
                     ax1.set_ylim(-.5,.5)
                     ax1.set_xlabel("x [kpc]")
                     ax1.set_ylabel("y [kpc]")
