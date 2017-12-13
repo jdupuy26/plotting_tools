@@ -74,6 +74,7 @@ def get_data(file,**kwargs):
     prec  = 32
     # Set quant
     quant = 'lv'
+    iline = 0
     for key in kwargs: 
         if key == 'iunit':
             iunit = kwargs[key] 
@@ -81,6 +82,8 @@ def get_data(file,**kwargs):
             prec  = kwargs[key]
         if key == 'quant':
             quant = kwargs[key]
+        if key == 'iline':
+            iline = kwargs[key]
     if quant == 'lv':
         t, x, y, lv, lvc = read_lv(file,prec, **kwargs)
         data = lv
@@ -89,6 +92,10 @@ def get_data(file,**kwargs):
         data = lvc
     elif quant == 'sii':
         t, x, y, data = read_sii(file,prec,**kwargs)
+        if iline == 2:
+            data = data[0]/data[1] # line ratio
+        else:
+            data = data[iline]
 
     if iunit == 1: 
         u = units_CGS()
@@ -176,7 +183,7 @@ def init(quant, files, **kwargs):
     yvals = [] # if quant = lv, y changes w/ time
     
     for i in range(n):
-        t, x, y, data = get_data(files[i], quant=quant)
+        t, x, y, data = get_data(files[i], quant=quant,**kwargs)
         # Set time dependent data 
         yvals.append(y)
         grdt.append(data)
@@ -233,6 +240,13 @@ def main():
     parser.add_argument("--smooth",dest="smooth",type=float,default=None,
                         help="Perform a gaussian smoothing of [SII] emission.\n"
                              "Enter smoothing scale in pc\n")
+    parser.add_argument("--iline",dest="iline",type=int,default=0,
+                        help="Line of interest for [SII] emission.\n"
+                             "0: 6717 Angstrom \n"
+                             "1: 6731 Angstrom \n"
+                             "2: Line ratio \n")
+    parser.add_argument("--old", dest="old",action='store_true',
+                        default=False, help="Switch if plotting old sii files, containing only 6717 emission\n")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -245,6 +259,8 @@ def main():
     nolog = args.nolog
     interp= args.interp
     smooth= args.smooth
+    iline = args.iline
+    old   = args.old
 
     # Get otf files 
     if quant == 'lv' or quant == 'lvc':
@@ -252,8 +268,6 @@ def main():
     else:
         files = get_files(athdir,'id0','*.'+quant+'.*')
 
-
-    
     # Sort them
     files.sort()
     # Get total number of files 
@@ -275,10 +289,9 @@ def main():
     if smooth and quant =='lvc':
         print("[main]: No need to smooth lvc diagrams")
         quit()
-
     
     # Get the data
-    tarr, x, y, data = init(quant,files,prec=prec)
+    tarr, x, y, data = init(quant,files,prec=prec,iline=iline,old=old)
     
         # Get labels 
     title = get_title(quant,nolog)
@@ -314,7 +327,7 @@ def main():
         
         if not nolog:
             data[iani[0]] = get_log(data[iani[0]])
-        if smooth != 0:
+        if smooth:
             data[iani[0]] = get_smooth(data[iani[0]],dx,smooth)
 
         im = ax1.imshow(data[iani[0]], extent=[mnx,mxx,mny,mxy],
