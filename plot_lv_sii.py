@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.pyplot import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable 
+from scipy.ndimage.filters import gaussian_filter
 
 # Import from correct directory
 import socket as s
@@ -47,7 +48,7 @@ plt.rcParams['image.cmap'] = 'magma'
 #  Author: John Dupuy 
 #          UNC Chapel Hill
 #  Date:    12/01/17
-#  Updated: 12/07/17 
+#  Updated: 12/12/17 
 #=====================================================
 
 #============FUNCTIONS===========
@@ -104,7 +105,7 @@ def get_data(file,**kwargs):
 #================================
 # get_log function
 def get_log(data):
-    data[ data <= 0] = 1e-20
+    data[ data <= 0] = 1e-80
     data = np.log10(data)
     return data 
 
@@ -147,6 +148,13 @@ def get_aspect(quant):
     if quant =='lv' or quant == 'lvc':
         asp = 'auto'
     return asp
+
+#================================
+# get_smooth() function
+def get_smooth(data,dx,smooth,**kwargs):
+    # compute sigma
+    sig    = smooth/dx # sig in pixels
+    return gaussian_filter(data,sig) 
 
 #================================
 # initialize() function
@@ -200,9 +208,9 @@ def main():
                         default=[0,0],type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
     parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
-                        default=(-2,2),type=float,
+                        default=[-2,2],type=float,
                         help="Min/max value for imshow")
-    parser.add_argument("--ifrm", dest="ifrm",type=int,default=None,
+    parser.add_argument("--ifrm", dest="ifrm",type=int,default=0,
                         help="Frame of simulation to plot:\n"
                              "  0: tsim = 0 \n"
                              "  1: tsim = dt_dump\n"
@@ -222,6 +230,9 @@ def main():
     parser.add_argument("--nolog",dest="nolog",action='store_true',
                         default=False,
                         help="Switch to take log of intensity, default is False")
+    parser.add_argument("--smooth",dest="smooth",type=float,default=None,
+                        help="Perform a gaussian smoothing of [SII] emission.\n"
+                             "Enter smoothing scale in pc\n")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -233,12 +244,15 @@ def main():
     save  = args.save
     nolog = args.nolog
     interp= args.interp
+    smooth= args.smooth
 
     # Get otf files 
     if quant == 'lv' or quant == 'lvc':
         files = get_files(athdir,'id0','*.lv.*')
     else:
         files = get_files(athdir,'id0','*.'+quant+'.*')
+
+
     
     # Sort them
     files.sort()
@@ -249,12 +263,19 @@ def main():
     if iani[1] == 0:
         iani[1] = n-1
     # Conflicting argument checks 
-    if anim and ifrm != None:
+    if anim and ifrm != 0:
         print("[main]: specifying a single frame while animating doesn't make sense")
         quit()
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
+    if smooth and quant =='lv':
+        print("[main]: No need to smooth lv diagrams")
+        quit()
+    if smooth and quant =='lvc':
+        print("[main]: No need to smooth lvc diagrams")
+        quit()
+
     
     # Get the data
     tarr, x, y, data = init(quant,files,prec=prec)
@@ -293,6 +314,8 @@ def main():
         
         if not nolog:
             data[iani[0]] = get_log(data[iani[0]])
+        if smooth != 0:
+            data[iani[0]] = get_smooth(data[iani[0]],dx,smooth)
 
         im = ax1.imshow(data[iani[0]], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
@@ -325,6 +348,9 @@ def main():
             if ifrm != iani[0]:
                 if not nolog:
                     data[ifrm] = get_log(data[ifrm])
+                if smooth:
+                    data[ifrm] = get_smooth(data[ifrm],dx,smooth)
+
             # make the plot
             im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
@@ -360,6 +386,8 @@ def main():
 
         if not nolog:
             data[ifrm] = get_log(data[ifrm])
+        if smooth:
+            data[ifrm] = get_smooth(data[ifrm],dx,smooth)
 
         im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
