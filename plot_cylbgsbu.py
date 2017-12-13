@@ -103,7 +103,7 @@ ctable = 'magma'
 precision = 32
 
 # Location of files for [SII] emission
-file_loc = '/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/analysis_files/data_files/'
+file_loc = '/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/cooling/'
 #Read in athinput 
 base,params = read_athinput.readath(athdir+athin)
 
@@ -1511,7 +1511,9 @@ for imnum in range(top+1):
                                                             
                     # Convert to cartesian grid   
                     n      = polar2cartesian(r, th_cent, n     , x_grid, y_grid)
+                    '''
                     img_T  = polar2cartesian(r, th_cent, img_T , x_grid, y_grid)
+                    
                     img_vr = polar2cartesian(r, th_cent, img_vr, x_grid, y_grid)
                     img_vp = polar2cartesian(r, th_cent, img_vp, x_grid, y_grid)
 
@@ -1522,29 +1524,35 @@ for imnum in range(top+1):
                     gradx = img_vx[2:,2:] - img_vx[:-2,:-2]
                     grady = img_vy[2:,2:] - img_vy[:-2,:-2]
 
-                    vel = np.sqrt(img_vx**2. + img_vy**2.) * vconv
-                    
                     div_v = gradx + grady
+                    '''
+                    
+                    grad_r = img_vr[1:,1:] - img_vr[1:,:-1] 
+                    grad_p = img_vp[1:,1:] - img_vp[:-1,1:]
+
+                    div_v = grad_r + grad_p
+                    
+                    div_v = polar2cartesian(r[1:], th_cent[1:], div_v, x_grid, y_grid)
+                    
                     div_v *= vconv       # convert to [km/s], this will be v_shock 
                     div_v[div_v > 0] = 1.e-20 # only negative div_v counts towards emission 
                     div_v = abs(div_v) 
-
 
                     #----- DIFFERENT INTENSITY MEASURES --------# 
 
                     # Get T_shock (cf. Pg. 401 of Tielens (2005))
                     #Tshk = np.log10( 1.e5 * (div_v/1.e2)**2. ) 
-                    '''
                     Tshk = np.log10( (2.*(gam - 1.)/(gam + 1)**2.) * 
                                         (mu*u.m_h/u.k_b) * 
                                         (div_v*1.e5)**2. )   # eqn. 11.20 of Tielens (2005)
-                    
+
                     # 1) From interpolation table and T_shock
                     # Use n and T to compute intensity
-                    int1 = 10.**(SIIemis_interp.ev(n[1:-1,1:-1], Tshk))*scaleh*u.pc # [erg cm^{-2} s^{-1} sr^{-1}]
+                    int1 = 10.**(SIIemis_interp.ev(n, Tshk))*scaleh*u.pc # [erg cm^{-2} s^{-1} sr^{-1}]
                     int1 = np.log10(int1)
                     
                     # 2) From a simple prescription using div_v 
+                    '''
                     div_v = abs(div_v)
                     
                     int2  = np.zeros(div_v.shape)
@@ -1553,28 +1561,31 @@ for imnum in range(top+1):
                     int2[(div_v > 20) & (div_v < 30)] = 2.
                     int2[(div_v > 30) & (div_v < 40)] = 3.
                     int2[div_v > 40] = 4. 
-                    '''
                     # 3) Intensity \propto v_s ^3 
                     int3 = np.power(div_v,3.)
                     int3[int3 == np.nan] = 1e-20 
                     #int3 = np.log10(int3)
+                    '''
                     #------------------------------------------#
-                    img = int3
+                    img = int1
 
                     # apply filter
                     pixel_size = (x_grid[-1]-x_grid[0])/len(x_grid)
                     sigma = desired_smooth/pixel_size # gives sigma in pixels 
                     print sigma
                     
-                    img = gaussian_filter(img,sigma,truncate=2,cval=1.0)  # gives smoothing 
-                    img = np.log10(img)
+                    #img = gaussian_filter(img,sigma,truncate=2,cval=1.0)  # gives smoothing 
+                    #img = np.log10(img)
 
                     # set min, max for plotting               
-                    mask = np.isnan(img)
-                    img[mask] = -20
-                    maxval = img[mask==False].max() 
+                    #mask = np.isnan(img)
+                    #img[mask] = -20
+                    #maxval = img[mask==False].max() 
                     # HERE
-                    minval = 3 #img[mask==False].min()
+                    #minval = 3 #img[mask==False].min()
+
+                    minval = -15
+                    maxval = 0
                     
                     # set extent for plotting 
                     mn1 = x_grid.min()/1000
@@ -1585,12 +1596,12 @@ for imnum in range(top+1):
                     im = ax1.imshow(img, interpolation='None',
                                             origin='lower',
                                             extent = [mn1,mx1,mn2,mx2],
-                                            vmin=minval,vmax=maxval,
+                                            vmin=-15,vmax=0,
                                             aspect= 0.77 )
 
                     # HERE
-                    ax1.set_xlim(-3.6,3.6)
-                    ax1.set_ylim(-1.75,1.75)
+                    ax1.set_xlim(-1.5,1.5)
+                    ax1.set_ylim(-.5,.5)
                     ax1.set_xlabel("x [kpc]")
                     ax1.set_ylabel("y [kpc]")
 
