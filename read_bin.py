@@ -316,7 +316,12 @@ def read_lv(fl,precision, **kwargs):
 #=====================================================
 # Read binary file 
 def read_sii(fl,precision, **kwargs):
-    
+
+    old   = False
+    # way to still be able to plot old sii files 
+    for key in kwargs:
+        if key == 'old':
+            old    = kwargs[key]
     try: 
         file = open(fl,'rb')
     except:
@@ -336,9 +341,16 @@ def read_sii(fl,precision, **kwargs):
     file.seek(0,0)
 
     # Read Nx, Ny
-    integ = np.fromfile(file,dtype=np.uint32,count=2)
-    Nx = integ[0]
-    Ny = integ[1] 
+    if old:
+        integ  = np.fromfile(file,dtype=np.uint32,count=2)
+        nlines = 1
+        Nx     = integ[0]
+        Ny     = integ[1]
+    else: 
+        integ  = np.fromfile(file,dtype=np.uint32,count=3)
+        nlines = integ[0]
+        Nx     = integ[1]
+        Ny     = integ[2] 
 
     # Read dat
     dat = np.fromfile(file,dtype=prec,count=5)
@@ -350,9 +362,10 @@ def read_sii(fl,precision, **kwargs):
     maxy     = dat[4]   # [pc]
 
     # Read sii grid
-    griddata = np.zeros((Ny,Nx))
-    for j in range(Ny):
-         griddata[j] = np.fromfile(file,dtype=prec,count=Nx)
+    griddata = np.zeros((nlines,Ny,Nx))
+    for iline in range(nlines):
+        for j in range(Ny):
+            griddata[iline,j] = np.fromfile(file,dtype=prec,count=Nx)
 
     # construct x,y arrays
     x = np.linspace(minx, maxx, Nx)
