@@ -94,6 +94,7 @@ def get_data(file,**kwargs):
         t, x, y, data = read_sii(file,prec,**kwargs)
         if iline == 2:
             data = data[0]/data[1] # line ratio
+            data[np.isnan(data)] = 0
         else:
             data = data[iline]
 
@@ -118,12 +119,23 @@ def get_log(data):
 
 #================================
 # get_title() function
-def get_title(quant,nolog):
+def get_title(quant,nolog,**kwargs):
     lab = 'def'
+    for key in kwargs:
+        if key == 'iline':
+            iline = kwargs[key] 
     if quant == 'lv' or quant == 'lvc':
         lab = 'Intensity of HI emission'
     elif quant == 'sii':
-        lab = 'Intensity of [SII] emission'
+        if   iline == 0:
+            lab = '6717 $\AA$ [SII] emission'
+        elif iline == 1:
+            lab = '6731 $\AA$ [SII] emission'
+        elif iline == 2:
+            lab = '[SII] line ratio, 6717/6731' 
+        else: 
+            print('[get_title]: iline not recognized \n')
+            quit()
     if not nolog:
         lab = 'log('+lab+')'
     return lab
@@ -247,6 +259,8 @@ def main():
                              "2: Line ratio \n")
     parser.add_argument("--old", dest="old",action='store_true',
                         default=False, help="Switch if plotting old sii files, containing only 6717 emission\n")
+    parser.add_argument("--cloudtrace",dest="cloudtrace",action='store_true',
+                        default=False, help="Switch to overplot a contour for the cloud (l,v) emission\n")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -261,6 +275,7 @@ def main():
     smooth= args.smooth
     iline = args.iline
     old   = args.old
+    cloudtrace=args.cloudtrace
 
     # Get otf files 
     if quant == 'lv' or quant == 'lvc':
@@ -292,9 +307,16 @@ def main():
     
     # Get the data
     tarr, x, y, data = init(quant,files,prec=prec,iline=iline,old=old)
-    
+    if cloudtrace: 
+        tarr, x, y, cloud = init('lvc',files,prec=prec,iline=iline,old=old)
+        # Set global values for stuff
+        nlevels = 20 
+        alpha   = 0.3
+        color   = 'springgreen'
+        step    = 0.01
+
         # Get labels 
-    title = get_title(quant,nolog)
+    title = get_title(quant,nolog,iline=iline)
     xlab  = get_xlabel(quant)
     ylab  = get_ylabel(quant)
     asp   = get_aspect(quant)
@@ -324,16 +346,24 @@ def main():
         # set mny, mxy for whole animation
         mny0 = 0.9*mny 
         mxy0 = 0.9*mxy
-        
-        if not nolog:
-            data[iani[0]] = get_log(data[iani[0]])
+      
         if smooth:
             data[iani[0]] = get_smooth(data[iani[0]],dx,smooth)
-
+       
+        if not nolog:
+            data[iani[0]] = get_log(data[iani[0]])
+        
         im = ax1.imshow(data[iani[0]], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
                         vmin = qmin, vmax = qmax,
                         interpolation = interp)
+
+        if cloudtrace:
+            m = np.amax(cloud[iani[0]])
+            if m != 0:
+                levels = np.linspace(0,m,nlevels) + step
+                ax1.contourf(cloud[iani[0]],levels,extent=[mnx,mxx,mny,mxy],
+                             colors=color,origin='lower',alpha=alpha)
         
         ax1.set_xlim(mnx,mxx)
         #if quant == 'lv':
@@ -359,16 +389,22 @@ def main():
             # update title
             ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm])
             if ifrm != iani[0]:
-                if not nolog:
-                    data[ifrm] = get_log(data[ifrm])
                 if smooth:
                     data[ifrm] = get_smooth(data[ifrm],dx,smooth)
-
+                if not nolog:
+                    data[ifrm] = get_log(data[ifrm])
             # make the plot
             im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
                         vmin = qmin, vmax = qmax, 
                         interpolation=interp)
+
+            if cloudtrace:
+                m = np.amax(cloud[ifrm])
+                if m != 0:
+                    levels = np.linspace(0,m,nlevels) + step
+                    ax1.contourf(cloud[ifrm],levels,extent=[mnx,mxx,mny,mxy],
+                                 colors=color,origin='lower',alpha=alpha)
             # Make sure the axes stay the same
             if quant == 'lv':
                 ax1.set_ylim(mny0,mxy0)
@@ -378,15 +414,15 @@ def main():
             cax.cla()
             # Make new colorbar
             fig.colorbar(im,label=title,cax=cax)
+            return  
 
-            return #[im] 
         # do the animation
         ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), 
                                           init_func=anim_init,repeat=False)
         if save:
             print("[main]: Saving animation")
-            #ani.save(quant+".gif",writer='imagemagick')
-            ani.save(quant+".avi")
+            ani.save(quant+".gif",writer='imagemagick')
+            #ani.save(quant+".avi")
     else:
         # Get spacing
         dx = x[1] - x[0]
@@ -396,22 +432,27 @@ def main():
         mxx = x[-1] + 0.5*dx
         mny = y[ifrm][ 0] - 0.5*dy
         mxy = y[ifrm][-1] + 0.5*dy
-
-        if not nolog:
-            data[ifrm] = get_log(data[ifrm])
+        
         if smooth:
             data[ifrm] = get_smooth(data[ifrm],dx,smooth)
-
+        if not nolog:
+            data[ifrm] = get_log(data[ifrm])
+        
         im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
                         vmin = qmin,vmax = qmax,
                         interpolation = interp)
+        if cloudtrace:
+            m = np.amax(cloud[ifrm])
+            if m != 0:
+                levels = np.linspace(0.0,m,nlevels) + step
+                ax1.contourf(cloud[ifrm],levels,extent=[mnx,mxx,mny,mxy],
+                             colors=color,origin='lower',alpha=alpha) 
         ax1.set_xlim(mnx,mxx)
         ax1.set_ylim(mny,mxy)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
         ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm]) 
-
         plt.colorbar(im,label=title)
 
         if save:
