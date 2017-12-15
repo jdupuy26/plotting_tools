@@ -268,10 +268,11 @@ def get_quant(file,quant,units):
     elif quant == 'iso_mach':   
         arr = np.sqrt(Mx**2 + My**2 + Mz**2)/(d*cs)
     elif quant == 'adia_mach':  
-        vel = np.sqrt(Mx**2 + My**2 + Mz**2)/d
+        vel = np.sqrt(Mx**2 + (My+omg*x)**2 + Mz**2)/d
         p   = gamm1*ie
         csound = np.sqrt((gamm1+1)*p/d)
-        arr = vel/csound
+        #arr = vel/csound
+        arr = csound
     elif quant == 'div_v':  
         arr = Mx/d, My/d + omg*x*u.v  # put back into lab frame
         
