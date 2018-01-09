@@ -212,12 +212,16 @@ def read_otf(fl,precision, **kwargs):
     vrot = np.zeros((Nang, nx1_dom))
     for i in range(Nang):
         vrot[i] = np.fromfile(file,dtype=prec,count=nx1_dom)
-
+    # Read A1, A2 [unitless] 
+    A1  = np.fromfile(file,dtype=prec,count=nx1_dom)
+    A2  = np.fromfile(file,dtype=prec,count=nx1_dom)
+    
     file.close()
     return t, mhvc, rhvc, rpos,\
            acc_rate, facvhvc, ahvc,\
            mcR, mcL,\
-           r, ang, vrot
+           r, ang, vrot,\
+           A1, A2
 
 #=====================================================
 #
