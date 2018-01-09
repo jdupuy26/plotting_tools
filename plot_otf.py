@@ -76,7 +76,8 @@ def get_data(file,**kwargs):
     t, mhvc, rhvc, rpos,\
     acc_rate, facvhvc, ahvc,\
     mcR, mcL,\
-    r, ang, vrot = rotf(file,prec, **kwargs)
+    r, ang, vrot,\
+    A1, A2           = rotf(file,prec, **kwargs)
 
     if iunit == 1: 
         u = units_CGS()
@@ -100,7 +101,8 @@ def get_data(file,**kwargs):
     return t, mhvc, rhvc, rpos,\
            acc_rate, facvhvc, ahvc,\
            mcR, mcL,\
-           r, ang, vrot 
+           r, ang, vrot,\
+           A1, A2 
 
 #================================
 # get_ylabel() function
@@ -118,6 +120,14 @@ def get_ylabel(quant):
         lab = 'v [pc/Myr]'
     elif quant == 'vcomp':
         lab = 'v$_{sim}$/v$_{ctrl}$ [unitless]'
+    elif quant == 'A1':
+        lab = 'A1 [unitless]'
+    elif quant == 'A2':
+        lab = 'A2 [unitless]'
+    elif quant == '<A1>':
+        label = '<A1> [unitless]'
+    elif quant == '<A2>':
+        label = '<A2> [unitless]'
     return lab
         
 
@@ -143,7 +153,8 @@ def init(quant, files, **kwargs):
     tarr = np.zeros(n)
 
     # choose quant
-    if quant != "vrot" and quant != "vcomp":
+    if (quant == 'mcR' or quant == 'mcL' or 
+        quant == 'RoL' or quant == 'LoR'):
         mcR_arr = np.zeros(n)
         mcL_arr = np.zeros(n)
         
@@ -152,7 +163,8 @@ def init(quant, files, **kwargs):
             t, mhvc, rhvc, rpos,\
             acc_rate, facvhvc, ahvc,\
             mcR, mcL,\
-            r, ang, vrot        = get_data(files[i], **kwargs)
+            r, ang, vrot,\
+            A1, A2         = get_data(files[i], **kwargs)
             
             tarr[i]     = t
             mcR_arr[i]  = mcR
@@ -181,7 +193,8 @@ def init(quant, files, **kwargs):
             t, mhvc, rhvc, rpos,\
             acc_rate, facvhvc, ahvc,\
             mcR, mcL,\
-            r, ang, vrot        = get_data(files[i], **kwargs)
+            r, ang, vrot,\
+            A1, A2        = get_data(files[i], **kwargs)
             
             tarr[i]     = t
             vrot_arr[i] = vrot
@@ -202,7 +215,8 @@ def init(quant, files, **kwargs):
             t, mhvc, rhvc, rpos,\
             acc_rate, facvhvc, ahvc,\
             mcR, mcL,\
-            r, ang, vrot        = get_data(files[i]     , **kwargs)
+            r, ang, vrot,\
+            A1, A2        = get_data(files[i]     , **kwargs)
 
             tarr[i]     = t
             vrot_arr[i] = vrot
@@ -235,6 +249,39 @@ def init(quant, files, **kwargs):
             data = (r, ang, vrot_arr[0:nctrl]/vrot_ctrl_arr)   
         else: # n < nctrl
             data = (r, ang, vrot_arr/vrot_ctrl_arr[0:n])
+
+    elif (quant == 'A1' or quant == 'A2' or
+          quant == '<A1>' or quant == '<A2>'): 
+        A1 = np.zeros((n,nx1_dom)) 
+        A2 = np.zeros((n,nx1_dom))
+        # Read in data
+        for i in range(n):
+            t, mhvc, rhvc, rpos,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
+            r, ang, vrot,\
+            a1, a2         = get_data(files[i], **kwargs)
+            
+            tarr[i] = t
+            A1[i]   = a1
+            A2[i]   = a2 
+
+        # print HVC parameters 
+        print("\n[init]: mhvc = %1.3e [M_sun]\n"
+              "        rhvc = %1.3e [pc]\n"
+              "        rpos = %1.3e [pc]\n"
+              "    acc_rate = %1.3e [M_sun/Myr]\n"
+              "     facvhvc = %1.3e [unitless] \n"
+              "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
+        # Set data
+        if   quant == 'A1':
+            data = (r, A1)
+        elif quant == 'A2':
+            data = (r, A2)    
+        elif quant == '<A1>':
+            data = np.mean(A1,axis=1)
+        elif quant == '<A2>':
+            data = np.mean(A2,axis=1)
     
     return tarr, data
 
@@ -268,7 +315,11 @@ def main():
                              "  RoL: mcR/mcL\n"
                              "  LoR: mcL/mcR\n"
                              " vrot: rotation curve\n"
-                             "vcomp: compare vrot to control sim\n")
+                             "vcomp: compare vrot to control sim\n"
+                             "   A1: Lopsidedness parameter for m=1\n"
+                             "   A2: Lopsidedness parameter for m=2\n"
+                             " <A1>: spatial average of A1\n"
+                             " <A2>: spatial average of A2\n")
     parser.add_argument("--iang", dest="iang",type=int, default=0,
                         required=False,
                         help="Angle to plot if using vrot:\n"
@@ -306,8 +357,10 @@ def main():
     if iang > Nang:
         print("[main]: iang must be less than Nang!")
         quit()
-    if anim and quant != 'vrot' and quant != 'vcomp':
-        print("[main]: only able to animate vrot and vcomp!")
+    if anim and (quant == 'mcR' or quant == 'mcL' or 
+                 quant == 'LoR' or quant == 'RoL' or
+                 quant == '<A1>' or quant == '<A2>'):
+        print("[main]: unable to animate these parameters")
         quit()
     if anim and ifrm != None:
         print("[main]: specifying a single frame while animating doesn't make sense")
@@ -315,7 +368,6 @@ def main():
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
-
     if quant == 'vcomp':
         #ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
         #             "sys_study/killdevil/m0/rc400/r1000/a0/fac0.5/"
@@ -356,9 +408,12 @@ def main():
     
     # set ylabel
     ystr = get_ylabel(quant)
-    # for the mass stuff
-    if quant != 'vrot' and quant != 'vcomp':
+    # for the mass/average A{1,2} stuff
+    if (quant == 'mcR' or quant == 'mcL' or 
+        quant == 'LoR' or quant == 'RoL' or
+        quant == '<A1>' or quant == '<A2>'):
         # Do plotting
+        print(data)
         plt.figure(figsize=(10,8))
         plt.plot(tarr, data)
         plt.xlabel('t [Myr]')
@@ -368,7 +423,7 @@ def main():
             plt.savefig(quant+".eps")
 
     # for rotation curves
-    else:
+    elif (quant == 'vrot' or quant == 'vcomp'):
         xstr = 'r [pc]'
         # unpack data
         r, ang, vrot = data[0], data[1], data[2] 
@@ -477,6 +532,44 @@ def main():
                 print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
                             "'python plot_otf.py -h' for help.")
                 quit()
+    # Handle plotting of lopsidedness parameters
+    elif quant == 'A1' or quant == 'A2':
+        xstr = 'r [pc]'
+        # unpack data
+        r, A = data[0], data[1] 
+
+        # setup axes
+        fig, ax = plt.subplots(figsize=(10,8))
+        ax.set_xlabel(xstr) 
+        ax.set_ylabel(ystr)
+        
+        # no animation
+        if ifrm is not None:
+            t = tarr[ifrm]
+            ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+            ax.plot(r, A[ifrm])
+            if save:
+                print("[main]: Saving figure")
+                plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
+        # handle animation
+        elif anim: 
+            line, = ax.plot(r, A[0]) 
+            # Set the plotting range for the whole animation 
+            ax.set_ylim(0.9*np.min(A[iani[0]:iani[1]]),
+                        1.1*np.max(A[iani[0]:iani[1]]))
+            def animate(ifrm):
+                line.set_ydata(A[ifrm])
+                ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+                return line,
+            ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
+            if save:
+                print("[main]: Saving animation")
+                ani.save(quant+str(iang)+".mp4")
+        else: 
+            print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
+                        "'python plot_otf.py -h' for help.")
+            quit()
+
     # show 
     if save:
         print("[main]: Program complete")
