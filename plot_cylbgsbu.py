@@ -14,6 +14,7 @@ from matplotlib.projections import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 from mpl_toolkits.axisartist.grid_finder import DictFormatter
 #scipy imports 
+from scipy.integrate import simps
 from scipy.interpolate import RectBivariateSpline, interp1d, griddata, interp2d
 from scipy.ndimage import map_coordinates
 from scipy.stats import binned_statistic
@@ -275,6 +276,8 @@ def get_quant(file,quant,units):
         arr = csound
     elif quant == 'div_v':  
         arr = Mx/d, My/d + omg*x*u.v  # put back into lab frame
+    elif quant == 'A1' or quant == 'A2':
+        arr = d
         
     return arr
 
@@ -324,6 +327,10 @@ def get_title(quant,units,log,column):
             title = 'div $V$ [km/s]'
         elif quant == 'SII':
             title = '[SII] Emission'
+        elif quant == 'A1': 
+            title = 'A1 parameter' 
+        elif quant == 'A2':
+            title = 'A2 parameter'
 
     elif units == 1:
         if quant == 'E':
@@ -982,6 +989,51 @@ def lv_proj_bin(dens, vr, vp, x, y, iner_frame=None, cart_grid=None):
 # Part 7: Return stuff
     return L, Vlos, intensity
 
+
+# Function to compute the a{0,1,2} fourier coefficients for lopsidedness measure
+def get_lopside(d, phi):
+    # inputs: d, density @ given time 
+    #        phi, cell centered phi coordinates
+    # Given surface density [d(\phi,R)], this function 
+    # computes the first 2 normalized 
+    # fourier coefficients: A1 = a1/a0, A2 = a2/a0
+    # The decomposition: d = a0 + sum_m{ a_m (R) cos(m\phi - \phi_m (R))} is used
+
+    # Get the dimensions of the array
+    nphi, nr = d.shape 
+    # Setup A1, A2 arrays
+    A1, A2 = np.zeros(nr), np.zeros(nr)
+
+    dx = phi[1] - phi[0]
+
+    for i in range(nr): 
+        a0  = simps(d[:,i]               ,x=phi) # m = 0 term
+        ap1 = simps(d[:,i]*np.cos(phi)   ,x=phi) # m = 1, cos term
+        bp1 = simps(d[:,i]*np.sin(phi)   ,x=phi) # m = 1, sin term
+        a1  = np.sqrt(ap1**2. + bp1**2.)         # m = 1, Fourier amplitude
+        ap2 = simps(d[:,i]*np.cos(2.*phi),x=phi) # m = 2, cos term
+        bp2 = simps(d[:,i]*np.sin(2.*phi),x=phi) # m = 2, sin term
+        a2  = np.sqrt(ap2**2. + bp2**2.)         # m = 2, Fourier amplitude
+        
+        # Test out trapezoidal rule 
+        myi1 = d[:,i]*np.cos(phi)
+        myi2 = d[:,i]*np.sin(phi)
+        ap1_trapz = 0.5*dx*(myi1[0] + myi1[-1]) + dx*sum(myi1[1:-1])
+        bp1_trapz = 0.5*dx*(myi2[0] + myi2[-1]) + dx*sum(myi2[1:-1])
+        #print('trapz err = %e' % abs(a1-np.sqrt(ap1_trapz**2 + bp1_trapz**2))) 
+
+        # Compute A1 and A2
+        A1[i] = a1/a0
+        A2[i] = a2/a0
+    
+
+    print('<A1> = %1.4f' % np.mean(A1))
+    print('<A2> = %1.4f' % np.mean(A2))
+    
+    # return results 
+    return A1, A2 
+         
+
 #================================
 
 #Read in system arguments
@@ -1067,6 +1119,37 @@ if args.cyl or args.p2c or args.proj or args.quant == 'div_v' or args.quant == '
     if args.iner:
         T     = 2*np.pi/(omg)
         tvec  = np.linspace(0,T,nx2)
+
+# Stuff for lopsidedness measure
+if args.quant == 'A1' or args.quant == 'A2':
+    mn1 = params[0].x1min
+    mx1 = params[0].x1max
+    nx1 = int(params[0].nx1)
+    mn2 = params[0].x2min
+    mx2 = params[0].x2max
+    nx2 = int(params[0].nx2)
+ 
+    dx2 = (mx2-mn2)/(float(nx2))
+    # get cell centered \phi coordinates
+    phi = np.linspace(mn2+0.5*dx2, mx2-0.5*dx2,nx2)
+    
+    # Create cell-faces array for x1
+    ri  = np.zeros(nx1+1)
+    dx1 = np.zeros(nx1+1)
+    # Create cell centered array for x1
+    R   = np.zeros(nx1)
+    ri[0] = mn1
+    if int(params[0].ilog) == 0:
+        x1rat = params[0].x1rat
+    else:
+        x1rat = np.power(mx1/mn1, 1.0/float(nx1))
+    print 'x1rat = ', x1rat
+    dx1[0] = (mx1-mn1)*(x1rat-1.0)/(x1rat**float(nx1)-1.0)
+    for i in range(1,len(ri)):
+        ri[i] = ri[i-1] + dx1[i-1]
+        dx1[i] = dx1[i-1]*x1rat
+    for i in range(0,len(R)):
+        R[i] = ri[i] + 0.5*dx1[i]
 
 # p2c, proj stuff
 if args.p2c or args.proj or args.quant == 'div_v' or args.quant == 'SII':
@@ -1625,6 +1708,20 @@ for imnum in range(top+1):
                     ax1.set_ylim(Vlos.min(),Vlos.max())
                     ax1.set_xlabel("l [Rad]")
                     ax1.set_ylabel("v [km/s]")
+
+                # Lopsidedness plots
+                elif args.quant == 'A1' or args.quant == 'A2':
+                    # Compute the coefficients as functions of R
+                    A1, A2 = get_lopside(img,phi)
+
+                    if args.quant == 'A1':
+                        ax1.plot(R, A1)
+                        ax1.set_xlabel('R [pc]')
+                        ax1.set_ylabel('A1 [unitless]')
+                    else:
+                        ax1.plot(R, A2)
+                        ax1.set_xlabel('R [pc]')
+                        ax1.set_ylabel('A2 [unitless]')
                 
                 # Not proj plots
                 else: 
@@ -1641,16 +1738,17 @@ for imnum in range(top+1):
                            
                  #ax1.set_title(get_title(quant,units)) 
                #ADD COLORBAR (using make axes locateable)
-                divider = make_axes_locatable(ax1)
-                cax = divider.append_axes("right", size="5%", pad=0.05)
-                cbar= plt.colorbar(im, cax=cax,label = get_title(args.quant,args.units,args.log,args.column))
-                #plt.gca().invert_yaxis()   
+                if args.quant != 'A1' and args.quant != 'A2':
+                    divider = make_axes_locatable(ax1)
+                    cax = divider.append_axes("right", size="5%", pad=0.05)
+                    cbar= plt.colorbar(im, cax=cax,label = get_title(args.quant,args.units,args.log,args.column))
+                    #plt.gca().invert_yaxis()   
 
-                minx0 = minx
-                maxx0 = maxx
-                miny0 = miny
-                maxy0 = maxy
-            
+                    minx0 = minx
+                    maxx0 = maxx
+                    miny0 = miny
+                    maxy0 = maxy
+                
         elif(imgactive ==1):
             
             im = ax1.imshow(img,interpolation='None',extent=[mn1,mx1,mn2,mx2],origin='lower',vmin=minval,vmax=maxval)
