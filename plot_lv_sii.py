@@ -219,7 +219,8 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
     parser.add_argument("quant",type=str,
                         help="Plotting options:\n"
-                             "  lv: HI emission f(l,v)\n")
+                             "  lv: HI emission f(l,v)\n"
+                             " sii: [SII] emission f(x,y)\n")
     parser.add_argument("--anim", dest="anim",action='store_true',
                         default=False,
                         help="Switch to do animation\n")
@@ -277,11 +278,17 @@ def main():
     old   = args.old
     cloudtrace=args.cloudtrace
 
-    # Get otf files 
+    # Get lv files 
     if quant == 'lv' or quant == 'lvc':
         files = get_files(athdir,'id0','*.lv.*')
-    else:
+    elif quant == 'sii':
         files = get_files(athdir,'id0','*.'+quant+'.*')
+        # Change default range for sii files
+        if (qmin,qmax) == (-2,2):
+            (qmin,qmax) = (-15,-5)
+    else: 
+        print('[main]: quant not understood, aborting...\n')
+        quit()
 
     # Sort them
     files.sort()
