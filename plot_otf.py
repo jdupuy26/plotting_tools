@@ -106,7 +106,7 @@ def get_data(file,**kwargs):
 
 #================================
 # get_ylabel() function
-def get_ylabel(quant):
+def get_ylabel(quant):  
     lab = 'def'
     if quant == 'mcR':
         lab = 'mass in right circle [M$_{\\odot}$]'
@@ -125,9 +125,9 @@ def get_ylabel(quant):
     elif quant == 'A2':
         lab = 'A2 [unitless]'
     elif quant == '<A1>':
-        label = '<A1> [unitless]'
+        lab = '<A1> [unitless]'
     elif quant == '<A2>':
-        label = '<A2> [unitless]'
+        lab = '<A2> [unitless]'
     return lab
         
 
@@ -413,7 +413,6 @@ def main():
         quant == 'LoR' or quant == 'RoL' or
         quant == '<A1>' or quant == '<A2>'):
         # Do plotting
-        print(data)
         plt.figure(figsize=(10,8))
         plt.plot(tarr, data)
         plt.xlabel('t [Myr]')
