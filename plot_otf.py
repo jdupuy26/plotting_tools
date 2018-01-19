@@ -146,11 +146,16 @@ def init(quant, files, **kwargs):
         if key == 'ctrl_files':
             ctrl_files = kwargs[key]
             nctrl      = len(ctrl_files)
+        if key == 'rmnmx':
+            rmnmx = kwargs[key]
 
     # set length of simulation from file list
     n    = len(files)
     # setup time array
     tarr = np.zeros(n)
+    # Parse rmnmx
+    rmn = rmnmx[0]
+    rmx = rmnmx[1]
 
     # choose quant
     if (quant == 'mcR' or quant == 'mcL' or 
@@ -264,7 +269,7 @@ def init(quant, files, **kwargs):
             
             tarr[i] = t
             A1[i]   = a1
-            A2[i]   = a2 
+            A2[i]   = a2  
 
         # print HVC parameters 
         print("\n[init]: mhvc = %1.3e [M_sun]\n"
@@ -279,9 +284,9 @@ def init(quant, files, **kwargs):
         elif quant == 'A2':
             data = (r, A2)    
         elif quant == '<A1>':
-            data = np.mean(A1,axis=1)
+            data = np.mean(A1[:,(rmn < r) & (r < rmx)],axis=1)
         elif quant == '<A2>':
-            data = np.mean(A2,axis=1)
+            data = np.mean(A2[:,(rmn < r) & (r < rmx)],axis=1)
     
     return tarr, data
 
@@ -340,6 +345,9 @@ def main():
                              "  .               \n"
                              "  .               \n"
                              "  n: tsim = n*dt_dump\n")
+    parser.add_argument("--rmnmx", dest="rmnmx",nargs=2,required=False,
+                        default=[params[0].x1min, params[0].x1max],type=float,
+                        help="Average A1 from rmn to rmx") 
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
                         help="Switch to save anim or figure")
@@ -352,6 +360,7 @@ def main():
     iani  = args.iani
     ifrm  = args.ifrm
     save  = args.save
+    rmnmx = args.rmnmx
 
     # Conflicting argument checks 
     if iang > Nang:
@@ -388,7 +397,7 @@ def main():
     else: 
         # Get the data
         tarr, data = init(quant, otf_files, prec=32, 
-                          nx1_dom=nx1_dom,Nang=Nang) 
+                          nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
     
     # Print out useful info 
     print("       thvcs = %1.3e [Myr]\n"
@@ -398,6 +407,12 @@ def main():
         print("[main]: Animating from t = %1.1f [Myr]\n" 
               "                    to t = %1.1f [Myr]\n"
                     %( tarr[iani[0]], tarr[iani[1]] ) )  
+
+    if (quant == '<A1>' or quant == '<A2>'):
+        print("[main]: Mean value of " + quant +
+              " between %1.0f [pc] and %1.0f [pc] "
+              "for whole simulation: %1.4f" 
+              " \n" % (rmnmx[0],rmnmx[1],np.mean(data)) ) 
 
     #===== PLOTTING =============================================
     # set colors for lines
