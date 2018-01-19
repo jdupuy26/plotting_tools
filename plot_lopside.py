@@ -155,7 +155,59 @@ def get_data(file,**kwargs):
            r, ang, vrot,\
            A1, A2 
 
+#==================================
+# get_mask() function
+def get_mask(dirs, flag):
+    # Given a unique flag, returns a boolean
+    # array, used to plot simulations as 
+    # functions of mass parameters
+    return np.array([flag in x for x in dirs])
 
+
+#==================================
+# get_sortdat() function
+def get_sortdat(dat, dirs, param):
+    # Given a certain parameter
+    # Separates data according to that 
+    # parameter
+
+    dats = []
+    
+    # Decide what param we are plotting 
+    if param == 'rc':
+        params = [200,400,600]
+    elif param == 'te':
+        params = [265,275,285]
+    elif param == 'r':
+        params = [500,1000,2000,3000]
+    elif param == 'fac':
+        params = [0.0,1.0,2.0] 
+    elif param == 'a':
+        params = [0.0,1.5708]
+
+    else: 
+        print('[get_sortdat]: param %s not understood, exiting\n', param)
+        quit()
+
+    for p in params:
+        dats.append(dat[get_mask(dirs,param+str(p))])
+    
+    return params, dats  
+
+#==================================
+# get_cmf() function
+def get_cmf(dat, x): 
+    # Given data, and a x-axis value, x,
+    # the cumulative function represents
+    # the fraction of data that has value 
+    # that is greater than x. 
+    
+    f = np.zeros(len(x))
+    for i in range(0,len(x)):
+        f[i] = len(dat[dat > x[i]])
+    f /= len(dat)
+    return f 
+         
 
 #==================================
 # get_stats() function
@@ -228,6 +280,7 @@ def get_stats(files, quant, nrand=10, stat='rand_chc',**kwargs):
 
     return mydata
 
+
 # main() function 
 def main():
     # First find the directories of the simulations
@@ -273,6 +326,12 @@ def main():
                         help="Switch to save figure")
     parser.add_argument("--cut", dest="cut",default=0.05,type=float,
                         help="Cutoff value for determining lopsidedness")
+    parser.add_argument("--param", dest='param',type=str, default='number',
+                        required=False,
+                        help='Parameter to plot on x-axis')
+    parser.add_argument("--cmf", dest='cmf',action='store_true',
+                        default=False,
+                        help="Switch to get the cumulative function f")
 
     # parsing arguments
     args = parser.parse_args()
@@ -282,6 +341,13 @@ def main():
     rmn, rmx = args.rmnmx
     save     = args.save
     cut      = args.cut
+    param    = args.param
+    cmf      = args.cmf
+
+    # error checking for conflicting arguments
+    if cmf and param == 'number':
+        print('[main]: Cumulative function cannot be plotted with number!')
+        quit()
 
     # Now read in data
     dat0   = get_stats(m0f  , quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, rmn=rmn, rmx=rmx)  
@@ -290,25 +356,74 @@ def main():
 
 
     # print out simulation info for simulations that are above cutoff 
+    '''
     m1e5d_above_cut = np.array(m1e5d)[dat1e5 > cut]  
     m1e6d_above_cut = np.array(m1e6d)[dat1e6 > cut] 
 
     print('[main]: m1e5, N_lop/N_sim = %3d/%3d' % (len(m1e5d_above_cut), len(m1e5d)) )
     print('[main]: m1e6, N_lop/N_sim = %3d/%3d' % (len(m1e6d_above_cut), len(m1e6d)) )
-     
-    plt.figure()
-    plt.plot(len(dat1e5)/2, dat0,'bo',label='control sim')
-    plt.plot(dat1e5,'r.',label='m1e5 sims') 
-    plt.plot(dat1e6,'g.',label='m1e6 sims')
-    plt.xlabel('Simulation number')
-    plt.ylabel('Stat: %s of %s' % (stat,quant))
-    plt.legend()
-    if save:
-        plt.savefig(quant+stat+'.eps') 
+    '''
+
+    if param == 'number':
+        plt.figure()
+        plt.plot(len(dat1e5)/2, dat0,'bo',label='control sim')
+        plt.plot(dat1e5,'r.',label='m1e5 sims') 
+        plt.plot(dat1e6,'g.',label='m1e6 sims')
+        plt.xlabel('Simulation number')
+        plt.ylabel('Stat: %s of %s' % (stat,quant))
+        plt.legend()
+        if save:
+            plt.savefig(quant+stat+'.eps') 
+        else:
+            plt.show()  
     else:
-        plt.show()  
-
-
+        params, dats1e5 = get_sortdat(dat1e5, m1e5d, param)
+        params, dats1e6 = get_sortdat(dat1e6, m1e6d, param)
+        
+        plt.figure()
+        # General plotting variables 
+        lines = ['-','--','-.',':']
+        # Define cmf variables 
+        if cmf: 
+            amin  = 0.8*np.min(dat1e5) 
+            amax  = 1.2*np.max(dat1e6)
+            da    = 5*(amax-amin)/len(dat1e6)
+            
+        # Plot m1e6
+        for (p,d,l) in zip(params,dats1e6,lines):
+            if cmf:
+                avals = np.arange(amin,amax,da)
+                plt.plot(avals, get_cmf(d,avals), 'b'+l+'x',label='m1e6'+param+str(p))
+            else:
+                plt.plot(p*np.ones(len(d)), d, 'b.',label='m1e6')
+        
+        # Plot m1e5 
+        for (p,d,l) in zip(params,dats1e5,lines):
+            if cmf:
+                avals = np.arange(amin,amax,da)
+                plt.plot(avals, get_cmf(d,avals), 'g'+l+'+',label='m1e5'+param+str(p))
+            else:
+                plt.plot(p*np.ones(len(d)), d, 'g+',label='m1e5')
+        
+        if cmf:
+            plt.xlim(avals[0], avals[-1])
+            plt.ylim(-0.1,1.1)
+            plt.xlabel('Quant: %s' % (quant))
+            plt.ylabel('Cumulative function, f')
+        else:
+            # Get spacing for plotting stuff
+            dxp = (params[-1] - params[0])/len(params)
+            
+            plt.plot(0.5*dxp, dat0, 'bo', label='Control sim')
+            plt.xlim(params[0]-0.1*dxp, params[-1]+0.1*dxp)
+            plt.xlabel('Parameter: %s' %(param) ) 
+            plt.ylabel('Stat: %s of %s' % (stat,quant))
+        plt.legend() 
+        if save:
+            plt.savefig(quant+stat+'.eps')
+        else:
+            plt.show() 
+        
     return
 
 main()
