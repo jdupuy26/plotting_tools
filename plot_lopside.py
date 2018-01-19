@@ -42,6 +42,16 @@ import read_athinput
 #  Updated: 01/16/18 
 #=====================================================
 
+#=======DICTIONARIES==============
+
+#=================================
+# sym dictionary
+sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
+       "a":"$\phi_{c,0}$=", "fac":"f$_{c}$=", "te":"t$_e$=",
+       "r":"r$_{pos,0}$=", "rc":"r$_c$=", "f":"$f$", "A1":"<A1>",
+       "A2":"<A2>", "RoL": "M$_{cr,R}$/M$_{cr,L}$", "LoR":"M$_{cr,L}$/M$_{cr,R}$"} 
+ 
+
 
 #=======FUNCTIONS=================
 
@@ -174,19 +184,14 @@ def get_sortdat(dat, dirs, param):
     dats = []
     
     # Decide what param we are plotting 
-    if param == 'rc':
-        params = [200,400,600]
-    elif param == 'te':
-        params = [265,275,285]
-    elif param == 'r':
-        params = [500,1000,2000,3000]
-    elif param == 'fac':
-        params = [0.0,1.0,2.0] 
-    elif param == 'a':
-        params = [0.0,1.5708]
+    select = {'rc':[200,400,600],'te':[265,275,285],
+              'r':[500,1000,2000,3000],'fac':[0.0,1.0,2.0],
+              'a':[0.0,1.5708]}
 
-    else: 
-        print('[get_sortdat]: param %s not understood, exiting\n', param)
+    try:
+        params = select[param]
+    except KeyError:
+        print('[get_sortdat]: ERROR, param %s not understood, exiting...\n' % param)
         quit()
 
     for p in params:
@@ -207,7 +212,8 @@ def get_cmf(dat, x):
         f[i] = len(dat[dat > x[i]])
     f /= len(dat)
     return f 
-         
+
+        
 
 #==================================
 # get_stats() function
@@ -367,8 +373,8 @@ def main():
     if param == 'number':
         plt.figure()
         plt.plot(len(dat1e5)/2, dat0,'bo',label='control sim')
-        plt.plot(dat1e5,'r.',label='m1e5 sims') 
-        plt.plot(dat1e6,'g.',label='m1e6 sims')
+        plt.plot(dat1e5,'r.',label=sym['m1e5']) 
+        plt.plot(dat1e6,'g.',label=sym['m1e6'])
         plt.xlabel('Simulation number')
         plt.ylabel('Stat: %s of %s' % (stat,quant))
         plt.legend()
@@ -393,31 +399,33 @@ def main():
         for (p,d,l) in zip(params,dats1e6,lines):
             if cmf:
                 avals = np.arange(amin,amax,da)
-                plt.plot(avals, get_cmf(d,avals), 'b'+l+'x',label='m1e6'+param+str(p))
+                plt.plot(avals, get_cmf(d,avals), 'b'+l+'x',
+                         label=sym['m1e6']+', '+sym[param]+str(p))
             else:
-                plt.plot(p*np.ones(len(d)), d, 'b.',label='m1e6')
+                plt.plot(p*np.ones(len(d)), d, 'b.',label=sym['m1e6'])
         
         # Plot m1e5 
         for (p,d,l) in zip(params,dats1e5,lines):
             if cmf:
                 avals = np.arange(amin,amax,da)
-                plt.plot(avals, get_cmf(d,avals), 'g'+l+'+',label='m1e5'+param+str(p))
+                plt.plot(avals, get_cmf(d,avals), 'g'+l+'+',
+                         label=sym['m1e5']+', '+sym[param]+str(p))
             else:
-                plt.plot(p*np.ones(len(d)), d, 'g+',label='m1e5')
+                plt.plot(p*np.ones(len(d)), d, 'g+',label=sym['m1e5'])
         
         if cmf:
             plt.xlim(avals[0], avals[-1])
             plt.ylim(-0.1,1.1)
-            plt.xlabel('Quant: %s' % (quant))
-            plt.ylabel('Cumulative function, f')
+            plt.xlabel(sym[quant])
+            plt.ylabel('Cumulative function, '+sym['f'])
         else:
             # Get spacing for plotting stuff
             dxp = (params[-1] - params[0])/len(params)
             
             plt.plot(0.5*dxp, dat0, 'bo', label='Control sim')
             plt.xlim(params[0]-0.1*dxp, params[-1]+0.1*dxp)
-            plt.xlabel('Parameter: %s' %(param) ) 
-            plt.ylabel('Stat: %s of %s' % (stat,quant))
+            plt.xlabel('Parameter: %s' %(sym[param]) ) 
+            plt.ylabel('Stat: %s of %s' % (stat,sym[quant]))
         plt.legend() 
         if save:
             plt.savefig(quant+stat+'.eps')
