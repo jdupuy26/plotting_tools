@@ -57,7 +57,7 @@ sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
 
 #=================================
 # get_dirs() function
-def get_dirs(cwd):
+def get_dirs(cwd, inr3000):
     # Purpose: get the directories of each simulation
     #          and store them in a list
     # input: 
@@ -78,14 +78,25 @@ def get_dirs(cwd):
     print('\n[get_dirs]: Finding simulation directories...')
     # Loop through stdout and get sims
     for d in stdout.splitlines():
-        if 'fac' in d:
-            if 'id' not in d:
-                if 'm0' in d:
-                    m0.append(d+'/')
-                if 'm1e5' in d:
-                    m1e5.append(d+'/')
-                if 'm1e6' in d:
-                    m1e6.append(d+'/')
+        if inr3000:
+            if 'fac' in d:
+                if 'id' not in d:
+                    if 'm0' in d:
+                        m0.append(d+'/')
+                    if 'm1e5' in d:
+                        m1e5.append(d+'/')
+                    if 'm1e6' in d:
+                        m1e6.append(d+'/')
+        else:
+            if 'r3000' not in d:
+                if 'fac' in d:
+                    if 'id' not in d:
+                        if 'm0' in d:
+                            m0.append(d+'/')
+                        if 'm1e5' in d:
+                            m1e5.append(d+'/')
+                        if 'm1e6' in d:
+                            m1e6.append(d+'/')
 
     return m0, m1e5, m1e6
 
@@ -176,18 +187,23 @@ def get_mask(dirs, flag):
 
 #==================================
 # get_sortdat() function
-def get_sortdat(dat, dirs, param):
+def get_sortdat(dat, err, dirs, param,inr3000=False):
     # Given a certain parameter
     # Separates data according to that 
     # parameter
 
     dats = []
+    errs = []
     
-    # Decide what param we are plotting 
-    select = {'rc':[200,400,600],'te':[265,275,285],
-              'r':[500,1000,2000,3000],'fac':[0.0,1.0,2.0],
-              'a':[0.0,1.5708]}
-
+    # Decide what param we are plotting
+    if inr3000: 
+        select = {'rc':[200,400,600],'te':[265,275,285],
+                  'r':[500,1000,2000,3000],'fac':[0.0,1.0,2.0],
+                  'a':[0.0,1.5708]}
+    else: 
+        select = {'rc':[200,400,600],'te':[265,275,285],
+                  'r':[500,1000,2000],'fac':[0.0,1.0,2.0],
+                  'a':[0.0,1.5708]}
     try:
         params = select[param]
     except KeyError:
@@ -196,22 +212,36 @@ def get_sortdat(dat, dirs, param):
 
     for p in params:
         dats.append(dat[get_mask(dirs,param+str(p))])
+        errs.append(err[get_mask(dirs,param+str(p))])
     
-    return params, dats  
+    return params, dats, errs  
 
 #==================================
 # get_cmf() function
-def get_cmf(dat, x): 
+def get_cmf(dat, err, x): 
     # Given data, and a x-axis value, x,
     # the cumulative function represents
     # the fraction of data that has value 
-    # that is greater than x. 
+    # that is greater than x.
+    # Also computes the error based off,
+    # low and high estimates.   
     
-    f = np.zeros(len(x))
+    f   = np.zeros(len(x))
+    flo = np.zeros(len(x))
+    fhi = np.zeros(len(x))
+
     for i in range(0,len(x)):
-        f[i] = len(dat[dat > x[i]])
-    f /= len(dat)
-    return f 
+        flo[i] = len(dat[(dat - err) > x[i]])
+        f[i]   = len(dat[dat > x[i]])
+        fhi[i] = len(dat[(dat + err) > x[i]])
+    
+    flo /= len(dat)
+    f   /= len(dat)
+    fhi /= len(dat)
+    lo_e = f - flo
+    hi_e = fhi - f
+
+    return f, (lo_e, hi_e)  
 
         
 
@@ -243,72 +273,64 @@ def get_stats(files, quant, nrand=10, stat='rand_chc',**kwargs):
             rmn = kwargs[key]
         if key == 'rmx':
             rmx = kwargs[key]
+        if key == 'ntrials':
+            ntrials = kwargs[key]
 
     # Total number of simulations
     nsim = len(files)
     
     # Create numpy array to store data
-    mydata = np.zeros(nsim)
+    mydata = np.zeros((ntrials,nsim))
 
-    # Begin main loop over simulations 
-    for i in range(nsim):
-        # Get length of each simulation
-        n    = len(files[i])
-        # time varying data array
-        tdat = np.zeros(n) 
-        for j in range(n):
-            t, mhvc, rhvc, rpos,\
-            acc_rate, facvhvc, ahvc,\
-            mcR, mcL,\
-            r, ang, vrot,\
-            A1, A2         = get_data(files[i][j], **kwargs)
 
-            if quant == 'A1':
-                tdat[j] = np.mean(A1[(rmn < r) & (r < rmx)])
-            elif quant == 'A2':
-                tdat[j] = np.mean(A2[(rmn < r) & (r < rmx)]) 
-            elif quant == 'LoR':
-                tdat[j] = mcL/mcR
-            elif quant == 'RoL':
-                tdat[j] = mcR/mcL
+        # Begin main loop over simulations 
+    for k in range(ntrials):
+        for i in range(nsim):
+            # Get length of each simulation
+            n    = len(files[i])
+            # time varying data array
+            tdat = np.zeros(n) 
+            for j in range(n):
+                t, mhvc, rhvc, rpos,\
+                acc_rate, facvhvc, ahvc,\
+                mcR, mcL,\
+                r, ang, vrot,\
+                A1, A2         = get_data(files[i][j], **kwargs)
+
+                if quant == 'A1':
+                    tdat[j] = np.mean(A1[(rmn < r) & (r < rmx)])
+                elif quant == 'A2':
+                    tdat[j] = np.mean(A2[(rmn < r) & (r < rmx)]) 
+                elif quant == 'LoR':
+                    tdat[j] = mcL/mcR
+                elif quant == 'RoL':
+                    tdat[j] = mcR/mcL
+                else: 
+                    print('[get_stats]: quant not understood, exiting...')
+                    quit()
+                    
+            # Now do the statistical analysis
+            if stat == 'rand_chc':   
+                mydata[k,i] = np.mean(np.random.choice(tdat,nrand))
+            elif stat == 't_mean':
+                mydata[k,i] = np.mean(tdat)
+            elif stat == 'max':
+                mydata[k,i] = np.max(tdat)
             else: 
-                print('[get_stats]: quant not understood, exiting...')
-                quit()
-                
-        # Now do the statistical analysis
-        if stat == 'rand_chc':   
-            mydata[i] = np.mean(np.random.choice(tdat,nrand))
-        elif stat == 't_mean':
-            mydata[i] = np.mean(tdat)
-        else: 
-            print('[get_stats]: stat not understood, exiting...')
-            quit() 
+                print('[get_stats]: stat not understood, exiting...')
+                quit() 
+    # Now take get the mean and std dev from mydata
+    mean = np.mean(mydata,axis=0)
+    err  = np.sqrt(np.var(mydata,axis=0))
 
-    return mydata
+    return mean, err
 
 
 # main() function 
 def main():
-    # First find the directories of the simulations
-    m0d, m1e5d, m1e6d = get_dirs(os.getcwd())
-    # Set the processor and unique flag
-    proc = 'id0'
-    flag = 'otf'
-    # Get global parameters from the m0 simulation
-    athin = [fname for fname in os.listdir(m0d[0]) if 'athinput' in fname]
-    prec  = 32
-        # Read input file
-    base, params = read_athinput.readath(m0d[0] + athin[0])
-    nx1_dom = int(params[0].nx1)
-
-
-    # Get all the paths for the simulation files     
-    m0f   = get_files(m0d  ,proc,flag)
-    m1e5f = get_files(m1e5d,proc,flag)
-    m1e6f = get_files(m1e6d,proc,flag)
-
     # Now parse input 
-        # Read in system arguments
+    
+    # Read in system arguments
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
     parser.add_argument("quant",type=str,
                         help="Quantity options:\n"
@@ -325,7 +347,7 @@ def main():
                         type=int,
                         help="number of points of quant(t) to randomly select\n")
     parser.add_argument("--rmnmx",type=float,dest='rmnmx',nargs=2,
-                        required=False,default=(params[0].x1min,params[0].x1max),
+                        required=False,default=(10.,5000.),
                         help="Min/max radii for computing <A1> and <A2>\n")
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
@@ -338,6 +360,15 @@ def main():
     parser.add_argument("--cmf", dest='cmf',action='store_true',
                         default=False,
                         help="Switch to get the cumulative function f")
+    parser.add_argument("--ntrials",type=int,dest='ntrials',required=False,
+                        default=1,
+                        help="Number of times to do the random choice with nrand."
+                             "If ntrials>1, then errorbars on <A1> represent the"
+                             "std dev of the measurement, and the measurement itself"
+                             "is the mean.\n") 
+    parser.add_argument("--inr3000", dest='inr3000',action='store_true',
+                        default=False,
+                        help="Switch to include r3000 sims, default is False.")
 
     # parsing arguments
     args = parser.parse_args()
@@ -349,16 +380,48 @@ def main():
     cut      = args.cut
     param    = args.param
     cmf      = args.cmf
+    ntrials  = args.ntrials
+    inr3000  = args.inr3000
+
+
+    # First find the directories of the simulations
+    m0d, m1e5d, m1e6d = get_dirs(os.getcwd(),inr3000)
+    
+    # Set the processor and unique flag
+    proc = 'id0'
+    flag = 'otf'
+
+    # Get global parameters from the m0 simulation
+    athin = [fname for fname in os.listdir(m0d[0]) if 'athinput' in fname]
+    prec  = 32
+    
+    # Read input file
+    base, params = read_athinput.readath(m0d[0] + athin[0])
+    nx1_dom = int(params[0].nx1)
+
+    # Get all the paths for the simulation files     
+    m0f   = get_files(m0d  ,proc,flag)
+    m1e5f = get_files(m1e5d,proc,flag)
+    m1e6f = get_files(m1e6d,proc,flag)
 
     # error checking for conflicting arguments
     if cmf and param == 'number':
         print('[main]: Cumulative function cannot be plotted with number!')
         quit()
 
+    if stat != 'rand_chc' and ntrials != 1:
+        print('[main]: Using more than one trial does not make sense for stat: %s!' %(stat))
+        quit()
+
     # Now read in data
-    dat0   = get_stats(m0f  , quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, rmn=rmn, rmx=rmx)  
-    dat1e5 = get_stats(m1e5f, quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, rmn=rmn, rmx=rmx)
-    dat1e6 = get_stats(m1e6f, quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, rmn=rmn, rmx=rmx)
+    print("[get_stats]: Starting main loop to fill data array.\n")
+
+    dat0  , err0   = get_stats(m0f  , quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, 
+                                     rmn=rmn, rmx=rmx, ntrials=ntrials)  
+    dat1e5, err1e5 = get_stats(m1e5f, quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, 
+                                     rmn=rmn, rmx=rmx, ntrials=ntrials)
+    dat1e6, err1e6 = get_stats(m1e6f, quant, nrand=nrand, stat=stat, nx1_dom=nx1_dom, 
+                                     rmn=rmn, rmx=rmx, ntrials=ntrials)
 
 
     # print out simulation info for simulations that are above cutoff 
@@ -370,11 +433,17 @@ def main():
     print('[main]: m1e6, N_lop/N_sim = %3d/%3d' % (len(m1e6d_above_cut), len(m1e6d)) )
     '''
 
+
+    print('[main]: Max error in 1e5, %e' %(np.max(err1e5)) ) 
+    print('[main]: Max error in 1e6, %e\n' %(np.max(err1e6)) ) 
+
     if param == 'number':
+        xval = np.arange(len(dat1e5))
+        
         plt.figure()
-        plt.plot(len(dat1e5)/2, dat0,'bo',label='control sim')
-        plt.plot(dat1e5,'r.',label=sym['m1e5']) 
-        plt.plot(dat1e6,'g.',label=sym['m1e6'])
+        plt.errorbar(len(dat1e5)/2,dat0,yerr=err0,fmt='bo',label='control sim')
+        plt.errorbar(xval,dat1e5,yerr=err1e5,fmt='r.',label=sym['m1e5']) 
+        plt.errorbar(xval,dat1e6,yerr=err1e6,fmt='g.',label=sym['m1e6'])
         plt.xlabel('Simulation number')
         plt.ylabel('Stat: %s of %s' % (stat,quant))
         plt.legend()
@@ -383,8 +452,8 @@ def main():
         else:
             plt.show()  
     else:
-        params, dats1e5 = get_sortdat(dat1e5, m1e5d, param)
-        params, dats1e6 = get_sortdat(dat1e6, m1e6d, param)
+        params, dats1e5, errs1e5 = get_sortdat(dat1e5, err1e5, m1e5d, param,inr3000)
+        params, dats1e6, errs1e6 = get_sortdat(dat1e6, err1e6, m1e6d, param,inr3000)
         
         plt.figure()
         # General plotting variables 
@@ -396,19 +465,21 @@ def main():
             da    = 5*(amax-amin)/len(dat1e6)
             
         # Plot m1e6
-        for (p,d,l) in zip(params,dats1e6,lines):
+        for (p,d,e,l) in zip(params,dats1e6,errs1e6,lines):
             if cmf:
                 avals = np.arange(amin,amax,da)
-                plt.plot(avals, get_cmf(d,avals), 'b'+l+'x',
+                fvals, er = get_cmf(d,e,avals)
+                plt.errorbar(avals, fvals, yerr=er, fmt='b'+l+'x',
                          label=sym['m1e6']+', '+sym[param]+str(p))
             else:
                 plt.plot(p*np.ones(len(d)), d, 'b.',label=sym['m1e6'])
         
         # Plot m1e5 
-        for (p,d,l) in zip(params,dats1e5,lines):
+        for (p,d,e,l) in zip(params,dats1e5,errs1e5,lines):
             if cmf:
                 avals = np.arange(amin,amax,da)
-                plt.plot(avals, get_cmf(d,avals), 'g'+l+'+',
+                fvals, er = get_cmf(d,e,avals)
+                plt.errorbar(avals, fvals, yerr=er, fmt='g'+l+'+',
                          label=sym['m1e5']+', '+sym[param]+str(p))
             else:
                 plt.plot(p*np.ones(len(d)), d, 'g+',label=sym['m1e5'])
