@@ -123,13 +123,19 @@ def get_files(dirs,proc,flag):
     # Create empty list to store file names for 
     # each simulation
     files = []
-    for d in dirs:
+    for i in range(len(dirs)):
         try:
-            files.append(sorted([d+proc+'/'+fname for
-                          fname in os.listdir(d+proc+'/')
-                          if flag in fname]))
+            sfiles = sorted([dirs[i]+proc+'/'+fname for
+                          fname in os.listdir(dirs[i]+proc+'/')
+                          if flag in fname]) 
+            if len(sfiles) != 51:
+                print("[get_files]: WARNING, exluding sim that did not complete: %s" %dirs[i])
+                dirs[i] = 'removed'  # remove this simulation from the directory list
+            else: 
+                files.append(sfiles)  
+
         except OSError: 
-            print('[get_files]: WARNING, sim files not present for %s ' % (d) )
+            print('[get_files]: WARNING, sim files not present for %s ' % (dirs[i]) )
     return files  
 
 #===========================
@@ -210,6 +216,9 @@ def get_sortdat(dat, err, dirs, param,inr3000=False):
         print('[get_sortdat]: ERROR, param %s not understood, exiting...\n' % param)
         quit()
 
+    # reconstruct dirs so that it gets rid of removed simulations/entries
+    dirs = [x for x in dirs if x != 'removed']
+
     for p in params:
         dats.append(dat[get_mask(dirs,param+str(p))])
         errs.append(err[get_mask(dirs,param+str(p))])
@@ -283,7 +292,7 @@ def get_stats(files, quant, nrand=10, stat='rand_chc',**kwargs):
     mydata = np.zeros((ntrials,nsim))
 
 
-        # Begin main loop over simulations 
+    # Begin main loop over simulations 
     for k in range(ntrials):
         for i in range(nsim):
             # Get length of each simulation
@@ -438,12 +447,13 @@ def main():
     print('[main]: Max error in 1e6, %e\n' %(np.max(err1e6)) ) 
 
     if param == 'number':
-        xval = np.arange(len(dat1e5))
+        xv1e5 = np.arange(len(dat1e5))
+        xv1e6 = np.arange(len(dat1e6))
         
         plt.figure()
         plt.errorbar(len(dat1e5)/2,dat0,yerr=err0,fmt='bo',label='control sim')
-        plt.errorbar(xval,dat1e5,yerr=err1e5,fmt='r.',label=sym['m1e5']) 
-        plt.errorbar(xval,dat1e6,yerr=err1e6,fmt='g.',label=sym['m1e6'])
+        plt.errorbar(xv1e5,dat1e5,yerr=err1e5,fmt='r.',label=sym['m1e5']) 
+        plt.errorbar(xv1e6,dat1e6,yerr=err1e6,fmt='g.',label=sym['m1e6'])
         plt.xlabel('Simulation number')
         plt.ylabel('Stat: %s of %s' % (stat,quant))
         plt.legend()
