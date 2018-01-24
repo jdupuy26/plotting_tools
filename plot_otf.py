@@ -9,6 +9,9 @@ from argparse import RawTextHelpFormatter
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.pyplot import cm
+from mpl_toolkits.mplot3d import Axes3D 
+# scipy imports 
+from scipy.optimize import curve_fit
 
 # Import from correct directory
 import socket as s
@@ -118,8 +121,6 @@ def get_ylabel(quant):
         lab = 'mcL/mcR [unitless]'
     elif quant == 'vrot': 
         lab = 'v [pc/Myr]'
-    elif quant == 'vcomp':
-        lab = 'v$_{sim}$/v$_{ctrl}$ [unitless]'
     elif quant == 'A1':
         lab = 'A1 [unitless]'
     elif quant == 'A2':
@@ -129,6 +130,24 @@ def get_ylabel(quant):
     elif quant == '<A2>':
         lab = '<A2> [unitless]'
     return lab
+
+#================================
+# get_title() function
+def get_title(quant,comp):
+    lab = {'A1':{'None':'A1 [unitless]',
+                 'sub' :'$|$A1 - A1$_{control}$$|$ [unitless]',
+                 'div' :'A1/A1$_{control}$ [unitless]'},
+           'A2':{'None':'A2 [unitless]',
+                 'sub' :'$|$A2 - A2$_{control}$$|$ [unitless]',
+                 'div' :'A2/A2$_{control}$ [unitless]'}
+          }
+    return lab[quant][comp]
+    
+
+#================================
+# exp_func() function
+def exp_func(x,a,b,c):
+    return a*np.exp(-b*x**2) + c
         
 
 #================================
@@ -136,16 +155,12 @@ def get_ylabel(quant):
 def init(quant, files, **kwargs):
     Nang       = 8
     nx1_dom    = 256
-    ctrl_files = 1
     # parse keyword args
     for key in kwargs:
         if key == 'Nang':
             Nang    = kwargs[key]
         if key == 'nx1_dom':
             nx1_dom = kwargs[key]
-        if key == 'ctrl_files':
-            ctrl_files = kwargs[key]
-            nctrl      = len(ctrl_files)
         if key == 'rmnmx':
             rmnmx = kwargs[key]
 
@@ -212,49 +227,6 @@ def init(quant, files, **kwargs):
               "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
         data = (r, ang, vrot_arr)
     
-    elif quant == 'vcomp':
-        vrot_arr      = np.zeros((n    ,Nang,nx1_dom))
-        vrot_ctrl_arr = np.zeros((nctrl,Nang,nx1_dom))
-        for i in range(n):
-            # Read in simulation files
-            t, mhvc, rhvc, rpos,\
-            acc_rate, facvhvc, ahvc,\
-            mcR, mcL,\
-            r, ang, vrot,\
-            A1, A2        = get_data(files[i]     , **kwargs)
-
-            tarr[i]     = t
-            vrot_arr[i] = vrot
-        # print HVC parameters 
-        print("\n[init]: mhvc = %1.3e [M_sun]\n"
-              "        rhvc = %1.3e [pc]\n"
-              "        rpos = %1.3e [pc]\n"
-              "    acc_rate = %1.3e [M_sun/Myr]\n"
-              "     facvhvc = %1.3e [unitless] \n"
-              "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
-       
-        tctrl = np.zeros(nctrl) 
-        for i in range(nctrl):
-            # Read in ctrl files 
-            t, mhvc, rhvc, rpos,\
-            acc_rate, facvhvc, ahvc,\
-            mcR, mcL,\
-            r, ang, vrot_ctrl   = get_data(ctrl_files[i], **kwargs)
-            
-            tctrl[i]         = t
-            vrot_ctrl_arr[i] = vrot_ctrl 
-        # This is a temporary fix to get rid of the high 
-        # variance due to different timesteps @ low r 
-        ncut = 0 
-        r             = r[ncut:]
-        vrot_arr      = vrot_arr[:,:,ncut:]
-        vrot_ctrl_arr = vrot_ctrl_arr[:,:,ncut:]
-        # Take the slice to avoid an array broadcasting error
-        if n > nctrl:
-            data = (r, ang, vrot_arr[0:nctrl]/vrot_ctrl_arr)   
-        else: # n < nctrl
-            data = (r, ang, vrot_arr/vrot_ctrl_arr[0:n])
-
     elif (quant == 'A1' or quant == 'A2' or
           quant == '<A1>' or quant == '<A2>'): 
         A1 = np.zeros((n,nx1_dom)) 
@@ -280,9 +252,9 @@ def init(quant, files, **kwargs):
               "        ahvc = %1.3e [rad]" % (mhvc, rhvc, rpos, acc_rate,facvhvc,ahvc))
         # Set data
         if   quant == 'A1':
-            data = (r, A1)
+            data = [r, A1]
         elif quant == 'A2':
-            data = (r, A2)    
+            data = [r, A2]    
         elif quant == '<A1>':
             data = np.mean(A1[:,(rmn < r) & (r < rmx)],axis=1)
         elif quant == '<A2>':
@@ -320,7 +292,6 @@ def main():
                              "  RoL: mcR/mcL\n"
                              "  LoR: mcL/mcR\n"
                              " vrot: rotation curve\n"
-                             "vcomp: compare vrot to control sim\n"
                              "   A1: Lopsidedness parameter for m=1\n"
                              "   A2: Lopsidedness parameter for m=2\n"
                              " <A1>: spatial average of A1\n"
@@ -351,6 +322,20 @@ def main():
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
                         help="Switch to save anim or figure")
+    parser.add_argument("--cmap", dest="cmap",action='store_true',
+                        default=False,
+                        help="Switch to create a colormap for A1 & A2")
+    parser.add_argument("--wire", dest='wire',action='store_true',
+                        default=False,
+                        help="Switch to make a 3d wireframe plot")
+    parser.add_argument("--efit", dest="efit",action='store_true',
+                        default=False,
+                        help="Switch to do exp fit for <A1> perturbations")
+    parser.add_argument("--comp", dest="comp",type=str,
+                        default='None',
+                        help="String to compare measurement to control files:\n"
+                             "  sub: Subtract control from sim and take abs value\n"
+                             "  div: Divide sim by control")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -361,6 +346,10 @@ def main():
     ifrm  = args.ifrm
     save  = args.save
     rmnmx = args.rmnmx
+    cmap  = args.cmap
+    wire  = args.wire
+    efit  = args.efit
+    comp  = args.comp
 
     # Conflicting argument checks 
     if iang > Nang:
@@ -374,14 +363,23 @@ def main():
     if anim and ifrm != None:
         print("[main]: specifying a single frame while animating doesn't make sense")
         quit()
+    if cmap and (quant != 'A1' and quant != 'A2'):
+        print("[main]: colormaps must be plotted using quant A1 or A2")
+        quit()
     if ifrm > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
-    if quant == 'vcomp':
-        #ctrl_path  = "/afs/cas.unc.edu/users/j/d/jdupuy26/Johns_work/sim_files/hvc_coll/"+\
-        #             "sys_study/killdevil/m0/rc400/r1000/a0/fac0.5/"
-        ctrl_path  = "/srv/scratch/jdupuy26/sim_files/hvc_coll/"+\
-                     "sys_study/demo1/cfl0.2/m0.0/rc250/r3500/a0.0/fac0.0/"
+
+    # Get the data
+    tarr, data = init(quant, otf_files, prec=32, 
+                      nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
+    print("       thvcs = %1.3e [Myr]\n"
+          "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
+
+    # Check if comparing to control simulation
+    if comp != 'None':
+        ctrl_path  = "/srv/analysis/jdupuy26/sys_study2/"+\
+                     "m0/te265/rc400/r1100/a0.0/fac1.0/"
         ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
         ctrl_files.sort()
         nctrl      = len(ctrl_files)
@@ -390,19 +388,28 @@ def main():
                   "          nctrl = %i, n = %i" %(nctrl, n))
         print("\n[main]: Using control files located at:\n %s\n" % ctrl_path)
         
-        # Get the data
-        tarr, data = init(quant, otf_files, prec=32,
-                          nx1_dom=nx1_dom,Nang=Nang,ctrl_files=ctrl_files)
-    
-    else: 
-        # Get the data
-        tarr, data = init(quant, otf_files, prec=32, 
-                          nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
-    
-    # Print out useful info 
-    print("       thvcs = %1.3e [Myr]\n"
-          "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
+        # Get the control data
+        tarr, dcon = init(quant, ctrl_files, prec=32,
+                          nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx)
+        
+        
+        # Print out some useful information
+        # 1) MSE, mean squared error
+        mse  = np.sum((data[1] - dcon[1])**2.)
+        mse /= float(data[1].shape[0] * data[1].shape[1])
 
+        print("\n[main]: MSE between control and sim: %1.3e \n" % (mse) ) 
+ 
+        # Decide what to do with the control data
+        if comp == 'sub':
+            data[1] -= dcon[1]
+            data[1]  = abs(data[1])
+        elif comp == 'div':
+            data[1] /= dcon[1]
+        else:
+            print('[main]: Comparison %s not recognized, exiting!' %(comp))
+    
+    
     if anim:
         print("[main]: Animating from t = %1.1f [Myr]\n" 
               "                    to t = %1.1f [Myr]\n"
@@ -428,16 +435,25 @@ def main():
         quant == 'LoR' or quant == 'RoL' or
         quant == '<A1>' or quant == '<A2>'):
         # Do plotting
+        tarr -= 250
         plt.figure(figsize=(10,8))
-        plt.plot(tarr, data)
+        plt.plot(tarr, data,'bo')
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
+        
+        # Fit perturbation to exponential
+        if quant == '<A2>' and efit:
+            #mxi = np.argmax(data) 
+            popt, pcov = curve_fit(exp_func,tarr,data,bounds=(0,[1,10,1]))
+            plt.plot(tarr,exp_func(tarr,*popt),'k--',label='Exp fit')
+            print(popt)
+            print(np.sqrt(np.diag(pcov)))
         if save:
             print("[main]: Saving figure")
             plt.savefig(quant+".eps")
 
     # for rotation curves
-    elif (quant == 'vrot' or quant == 'vcomp'):
+    elif (quant == 'vrot'):
         xstr = 'r [pc]'
         # unpack data
         r, ang, vrot = data[0], data[1], data[2] 
@@ -552,37 +568,67 @@ def main():
         # unpack data
         r, A = data[0], data[1] 
 
-        # setup axes
-        fig, ax = plt.subplots(figsize=(10,8))
-        ax.set_xlabel(xstr) 
-        ax.set_ylabel(ystr)
-        
-        # no animation
-        if ifrm is not None:
-            t = tarr[ifrm]
-            ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
-            ax.plot(r, A[ifrm])
-            if save:
-                print("[main]: Saving figure")
-                plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
-        # handle animation
-        elif anim: 
-            line, = ax.plot(r, A[0]) 
-            # Set the plotting range for the whole animation 
-            ax.set_ylim(0.9*np.min(A[iani[0]:iani[1]]),
-                        1.1*np.max(A[iani[0]:iani[1]]))
-            def animate(ifrm):
-                line.set_ydata(A[ifrm])
+                # handle plotting a colormap
+        if (cmap) or (wire):
+                        # 'Cell centered' time 
+            dt = tarr[1] - tarr[0]
+            tc = np.linspace(tarr[0]-0.5*dt, tarr[-1]+0.5*dt,len(tarr)) 
+            # 'Cell centered' radii
+            lr = np.log(r)
+            dx = lr[1] - lr[0]
+            rc = np.exp(np.linspace(lr[0]-0.5*dx, lr[-1]+0.5*dx,len(r)))
+
+            # Create the meshgrid
+            R, T = np.meshgrid(rc,tc)
+            
+            if cmap:
+                # setup axes
+                fig, ax = plt.subplots(figsize=(10,8),facecolor='white')
+                # Make the colormap
+                im = ax.pcolormesh(R,T,A,cmap='magma')
+                cbar = plt.colorbar(im,pad=0.1,label=get_title(quant,comp)) 
+            else: 
+                fig = plt.figure()
+                ax  = fig.add_subplot(111,projection='3d')
+                surf = ax.plot_surface(R,T,A,rstride=3,cstride=3,cmap='rainbow',shade=False)
+                ax.set_zlabel(get_title(quant,comp))
+            
+            
+            ax.set_ylabel('t [Myr]')
+            ax.set_xlabel('r [pc]')
+            ax.set_xlim(rc[0],rc[-1])
+            ax.set_ylim(tc[0],tc[-1])
+
+        else:
+            ax.set_xlabel(xstr) 
+            ax.set_ylabel(ystr)
+            
+            # no animation
+            if ifrm is not None:
+                t = tarr[ifrm]
                 ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
-                return line,
-            ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
-            if save:
-                print("[main]: Saving animation")
-                ani.save(quant+str(iang)+".mp4")
-        else: 
-            print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
-                        "'python plot_otf.py -h' for help.")
-            quit()
+                ax.plot(r, A[ifrm])
+                if save:
+                    print("[main]: Saving figure")
+                    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
+            # handle animation
+            elif anim: 
+                line, = ax.plot(r, A[0]) 
+                # Set the plotting range for the whole animation 
+                ax.set_ylim(0.9*np.min(A[iani[0]:iani[1]]),
+                            1.1*np.max(A[iani[0]:iani[1]]))
+                def animate(ifrm):
+                    line.set_ydata(A[ifrm])
+                    ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+                    return line,
+                ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
+                if save:
+                    print("[main]: Saving animation")
+                    ani.save(quant+str(iang)+".mp4")
+            else: 
+                print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
+                            "'python plot_otf.py -h' for help.")
+                quit()
 
     # show 
     if save:
