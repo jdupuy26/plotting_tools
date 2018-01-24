@@ -52,7 +52,6 @@ sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
        "A2":"<A2>", "RoL": "M$_{cr,R}$/M$_{cr,L}$", "LoR":"M$_{cr,L}$/M$_{cr,R}$"} 
  
 
-
 #=======FUNCTIONS=================
 
 #=================================
@@ -291,34 +290,43 @@ def get_stats(files, quant, nrand=10, stat='rand_chc',**kwargs):
     # Create numpy array to store data
     mydata = np.zeros((ntrials,nsim))
 
-
     # Begin main loop over simulations 
-    for k in range(ntrials):
-        for i in range(nsim):
-            # Get length of each simulation
-            n    = len(files[i])
-            # time varying data array
-            tdat = np.zeros(n) 
-            for j in range(n):
-                t, mhvc, rhvc, rpos,\
-                acc_rate, facvhvc, ahvc,\
-                mcR, mcL,\
-                r, ang, vrot,\
-                A1, A2         = get_data(files[i][j], **kwargs)
+    for i in range(nsim):
+        # Get length of each simulation
+        n    = len(files[i])
+        
+        # time varying data array
+        tdat = np.zeros(n) 
+        
+        # start time loop
+        for j in range(n):
+            t, mhvc, rhvc, rpos,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
+            r, ang, vrot,\
+            A1, A2         = get_data(files[i][j], **kwargs)
 
-                if quant == 'A1':
-                    tdat[j] = np.mean(A1[(rmn < r) & (r < rmx)])
-                elif quant == 'A2':
-                    tdat[j] = np.mean(A2[(rmn < r) & (r < rmx)]) 
-                elif quant == 'LoR':
-                    tdat[j] = mcL/mcR
-                elif quant == 'RoL':
-                    tdat[j] = mcR/mcL
-                else: 
-                    print('[get_stats]: quant not understood, exiting...')
-                    quit()
-                    
-            # Now do the statistical analysis
+            t, mhvc, rhvc, rpos,\
+            acc_rate, facvhvc, ahvc,\
+            mcR, mcL,\
+            r, ang, vrot,\
+            A1c, A2c       = get_data(ctrl_files[j], **kwargs)
+
+            if quant == 'A1':
+                tdat[j] = np.mean(A1[(rmn < r) & (r < rmx)])
+            elif quant == 'A2':
+                tdat[j] = np.mean(A2[(rmn < r) & (r < rmx)]) 
+            elif quant == 'LoR':
+                tdat[j] = mcL/mcR
+            elif quant == 'RoL':
+                tdat[j] = mcR/mcL
+            else: 
+                print('[get_stats]: quant not understood, exiting...')
+                quit()
+                
+        # Now do the statistical analysis
+
+        for k in range(ntrials):
             if stat == 'rand_chc':   
                 mydata[k,i] = np.mean(np.random.choice(tdat,nrand))
             elif stat == 't_mean':
@@ -479,7 +487,7 @@ def main():
             if cmf:
                 avals = np.arange(amin,amax,da)
                 fvals, er = get_cmf(d,e,avals)
-                plt.errorbar(avals, fvals, yerr=er, fmt='b'+l+'x',
+                plt.plot(avals, fvals, 'b'+l+'x',
                          label=sym['m1e6']+', '+sym[param]+str(p))
             else:
                 plt.plot(p*np.ones(len(d)), d, 'b.',label=sym['m1e6'])
@@ -489,7 +497,7 @@ def main():
             if cmf:
                 avals = np.arange(amin,amax,da)
                 fvals, er = get_cmf(d,e,avals)
-                plt.errorbar(avals, fvals, yerr=er, fmt='g'+l+'+',
+                plt.plot(avals, fvals, 'g'+l+'+',
                          label=sym['m1e5']+', '+sym[param]+str(p))
             else:
                 plt.plot(p*np.ones(len(d)), d, 'g+',label=sym['m1e5'])
