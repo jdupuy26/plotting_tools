@@ -3,8 +3,11 @@ import numpy as np
 import sys
 import os
 import subprocess as sbp
+# matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+# scipy
+from scipy.interpolate import UnivariateSpline as uspl
 import argparse
 from argparse import RawTextHelpFormatter
 import time as t
@@ -42,7 +45,7 @@ import read_athinput
 #  Author: John Dupuy 
 #          UNC Chapel Hill
 #  Date:    01/24/18 
-#  Updated: 01/24/18 
+#  Updated: 02/15/18 
 #=====================================================
 
 #=======DICTIONARIES==============
@@ -50,6 +53,13 @@ import read_athinput
 #=================================
 # sym dictionary
 sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
+       "m3e6":"M$_c$=3 $\\times$ 10$^6$ M$_{\odot}$", 
+       "m6e6":"M$_c$=6 $\\times$ 10$^6$ M$_{\odot}$",
+       "m5e6":"M$_c$=5 $\\times$ 10$^6$ M$_{\odot}$",
+       "m1e7":"M$_c$=10$^7$ M$_{\odot}$",
+       "m5e7":"M$_c$=5 $\\times$ 10$^7$ M$_{\odot}$",
+       "m1e8":"M$_c$=10$^8$ M$_{\odot}$",  
+       "m0"  :"M$_c$=0 M$_{\odot}$",
        "a":"$\phi_{c,0}$", "fac":"f$_{c}$", "te":"t$_e$",
        "r":"r$_{pos,0}$", "rc":"r$_c$", "f":"$f$", "A1":"<A1>",
        "A2":"<A2>", "RoL": "M$_{cr,R}$/M$_{cr,L}$", "LoR":"M$_{cr,L}$/M$_{cr,R}$"} 
@@ -76,39 +86,31 @@ def get_dirs(cwd, inr3000):
     process = sbp.Popen(["find",cwd,"-type","d"], stdout=sbp.PIPE)
     stdout, stderr = process.communicate()
 
-    # Create empty lists for each mass range
-    m0   = []
-    m1e5 = []
-    m1e6 = []
+    # find mass directories 
+    masses = os.walk('.').next()[1]
+    # create empty dictionary of emtpy lists
+        # for each mass  
+    mdict  = {m: [] for m in masses}
     
     print('\n[get_dirs]: Finding simulation directories...')
     # Loop through stdout and get sims
     for d in stdout.splitlines():
         if inr3000:
-            if 'fac' in d:
-                if 'id' not in d:
-                    if 'm0' in d:
-                        m0.append(d+'/')
-                    if 'm1e5' in d:
-                        m1e5.append(d+'/')
-                    if 'm1e6' in d:
-                        m1e6.append(d+'/')
-        else:
-            if 'r3000' not in d:
-                if 'fac' in d:
-                    if 'id' not in d:
-                        if 'm0' in d:
-                            m0.append(d+'/')
-                        if 'm1e5' in d:
-                            m1e5.append(d+'/')
-                        if 'm1e6' in d:
-                            m1e6.append(d+'/')
+            if ('fac' in d) and ('id' not in d):
+                for m in masses:
+                    if m in d:
+                        mdict[m].append(d+'/')
 
-    return m0, m1e5, m1e6
+        else:
+            if ('r3000' not in d) and ('fac' in d) and ('id' not in d):
+                for m in masses:
+                    if m in d:
+                        mdict[m].append(d+'/') 
+    return mdict 
 
 #==================================
 # get_files() function
-def get_files(dirs,proc,flag):
+def get_files(dirs,proc,flag, num_files):
     # input: ALL TYPE str
     #       dirs: directory that contains athinput
     #       proc: processor no.
@@ -124,6 +126,18 @@ def get_files(dirs,proc,flag):
         m = 'm1e5'
     if 'm1e6' in dirs[0]:
         m = 'm1e6'  
+    if 'm3e6' in dirs[0]:
+        m = 'm3e6'
+    if 'm5e6' in dirs[0]:
+        m = 'm5e6'
+    if 'm6e6' in dirs[0]:
+        m = 'm6e6' 
+    if 'm1e7' in dirs[0]:
+        m = 'm1e7'
+    if 'm5e7' in dirs[0]:
+        m = 'm5e7'
+    if 'm1e8' in dirs[0]:
+        m = 'm1e8'
 
     print("[get_files]: Getting files containing '%s' for each %4s simulation..." % (flag,m) )  
     # Create empty list to store file names for 
@@ -134,7 +148,7 @@ def get_files(dirs,proc,flag):
             sfiles = sorted([dirs[i]+proc+'/'+fname for
                           fname in os.listdir(dirs[i]+proc+'/')
                           if flag in fname]) 
-            if len(sfiles) != 51:
+            if len(sfiles) != num_files:
                 print("[get_files]: WARNING, exluding sim that did not complete: %s" %dirs[i])
                 dirs[i] = 'removed'  # remove this simulation from the directory list
             else: 
@@ -197,11 +211,11 @@ def get_groups(dirs, param, inr3000=False):
     print("[get_groups]: Separating files into groups based on param: %s" % (param) ) 
 
     if inr3000: 
-        select = {'rc':['200','400','600'],'te':['265','275','285'],
+        select = {'rc':['200','400','600','800'],'te':['265','275','285','325'],
                   'r':['500','1000','2000','3000'],'fac':['0.0','1.0','2.0'],
                   'a':['0.0','1.5708']}
     else: 
-        select = {'rc':['200','400','600'],'te':['265','275','285'],
+        select = {'rc':['200','400','600','800'],'te':['265','275','285','325'],
                   'r':['500','1000','2000'],'fac':['0.0','1.0','2.0'],
                   'a':['0.0','1.5708']}
     
@@ -250,7 +264,8 @@ def get_groups(dirs, param, inr3000=False):
                             for x in dirs:
                                if flag in x:
                                    group.append(x)  
-                        mygroups.append(group)
+                        if group:
+                            mygroups.append(group)
     elif param == 'te':   
         for a in select['a']:
             for rc in select['rc']:
@@ -283,11 +298,11 @@ def get_sortdat(dirs, param, inr3000=False):
     
     # Decide what param we are plotting
     if inr3000: 
-        select = {'rc':[200,400,600],'te':[265,275,285],
+        select = {'rc':[200,400,600,800],'te':[265,275,285,325],
                   'r':[500,1000,2000,3000],'fac':[0.0,1.0,2.0],
                   'a':[0.0,1.5708]}
     else: 
-        select = {'rc':[200,400,600],'te':[265,275,285],
+        select = {'rc':[200,400,600,800],'te':[265,275,285,325],
                   'r':[500,1000,2000],'fac':[0.0,1.0,2.0],
                   'a':[0.0,1.5708]}
     try:
@@ -317,6 +332,15 @@ def get_cmf(dat, x):
 
     return f 
 
+#==================================
+# exp_fit() function
+def exp_fit(x, dat, c=0):
+    # fits data to decaying exponential
+    dat -= c
+    dat  = np.log(dat)
+    b, log_a = np.polyfit(x,dat,1)
+    a = np.exp(log_a)
+    return a, b
 
 #==================================
 # get_stats() function
@@ -351,10 +375,10 @@ def get_stats(files, quant, stat, **kwargs):
 
     # Total number of simulations
     nsim = len(files)
+    tarr = np.zeros(nsim) 
     
     # Create numpy array to store data
     mydata = []
-
     # Begin main loop over simulations 
     for i in range(nsim):
         # Get length of each simulation
@@ -367,7 +391,6 @@ def get_stats(files, quant, stat, **kwargs):
         
         # Error check
         if (nctrl != n):
-            print(ctrl_files) 
             print("[get_stat]: Error! no. of ctrl files does not equal no. of sim files!")
             quit()
 
@@ -404,6 +427,83 @@ def get_stats(files, quant, stat, **kwargs):
             mydata.append(np.sqrt(np.sum((tdats - tdatc)**2.0)/float(tdats.size)))
         elif stat == 'cmf':
             mydata.append( np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) )
+
+        # time scale measures 
+        elif stat == 'ts_cut':
+            # time scale measured by time above cutoff
+            cut = 0.01
+            avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) 
+            mx  = np.max(avg) 
+            
+            try:
+                ts_cut = tarr[avg > cut][-1] - tarr[avg > cut][0]
+            except IndexError:
+                ts_cut = 0
+            mydata.append( (mx, ts_cut) ) 
+
+        elif stat == 'ts_half':
+            # time scale measured by time it takes to go to half the max
+            avg  = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) 
+            mx   = np.max(avg)
+            ts_half = tarr[avg > mx/2.0][-1] - tarr[avg > mx/2.0][0]
+            mydata.append( (mx, ts_half) ) 
+
+        elif stat == 'ts_lin':
+            # time scale measured by linear fit to data
+            ex  = 5 # exclude first 4 points for the linfit 
+            avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) 
+            tarr -= 250.
+
+            m,b = np.polyfit(tarr[ex:],avg[ex:],1)
+            if abs(m) > 1e-5:
+                mydata.append( ( np.mean(avg),(0.05 - b)/m ) ) 
+            else: 
+                mydata.append( (np.mean(avg), 0) )
+
+        elif stat == 'ts_spl':
+            # time scale measured by spline fit to data
+            # if quadratic spline fails, fall back to linear spline
+            avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1)
+            avgc= np.mean(tdatc[:, (rmn < r) & (r < rmx)], axis=1) # for the control
+            tarr -= 250.
+            # start at 50 to avoid immediately falling under the value
+            tnew = np.arange(50,10000,1)
+            # Try quadratic spline
+            f    = uspl(tarr,avg,k=2,s=1.0)
+            tcut = tnew[np.where(f(tnew) < np.mean(avgc))]
+
+            # if tcut is empty try linear
+            if len(tcut) == 0:
+                f = uspl(tarr,avg,k=1,s=1.0)
+                tcut = tnew[np.where(f(tnew) < np.mean(avgc))]
+
+            #if tcut[0] == 5:
+            #    print(files[i][0])
+
+            # define the timescale
+            try: 
+                ts = tcut[0] - tarr[1] 
+                if ts == 0:
+                    print(files[i][0]) 
+            except IndexError:
+                print('[get_stats]: Unable to get timescale for sim %s'
+                      ' setting timescale to 0' % (files[i][0]))
+                ts = 0
+            mydata.append( (np.max(avg), ts) ) 
+        elif stat == 'ts_exp':
+            # timescale measured by fitting data to a exponential
+            # NOTE: this is really only a good fit if we do the 
+                #   averaging b/w 1200 - 4000 pc (i.e. disc region)
+            avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1)
+            # Assume exponential form after the separation of disc and bar perts 
+            mxi  = np.argmax(avg)
+            a, b = exp_fit(tarr[mxi:], avg[mxi:])
+
+            # Define the time scale as the half-life
+            ts = -(1.0/b) * np.log(2) 
+
+            mydata.append( (np.max(avg), ts) ) 
+                
         else: 
             print('[get_stats]: stat not understood, exiting...')
             quit() 
@@ -427,7 +527,7 @@ def main():
                              "  RMS: Root mean square = SQRT(MSE)\n"
                              "  cmf: Plot cumulative function\n")
     parser.add_argument("--rmnmx",type=float,dest='rmnmx',nargs=2,
-                        required=False,default=(10.,5000.),
+                        required=False,default=(1200.,4000.),
                         help="Min/max radii for computing <A1> and <A2>\n")
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
@@ -461,103 +561,113 @@ def main():
     anim     = args.anim
     
     # First find the directories of the simulations
-    m0d, m1e5d, m1e6d = get_dirs(os.getcwd(),inr3000)
+    mdict = get_dirs(os.getcwd(),inr3000)   # dictionary of {mass: mdsim}
+    mlist = sorted(os.walk('.').next()[1])  # list of mass directory names
+
     
     # Set the processor and unique flag
     proc = 'id0'
     flag = 'otf'
-
+    
     # Get global parameters from the m0 simulation
-    athin = [fname for fname in os.listdir(m0d[0]) if 'athinput' in fname]
+    athin =      [fname for fname in os.listdir(mdict[mlist[0]][0]) if 'athinput' in fname]
+    n     =  len([fname for fname in os.listdir(mdict[mlist[0]][0]+'/'+proc) if flag in fname])
     prec  = 32
+
     
     # Read input file
-    base, params = read_athinput.readath(m0d[0] + athin[0])
+    base, params = read_athinput.readath(mdict[mlist[0]][0] + athin[0])
     nx1_dom = int(params[0].nx1)
 
-    # Get all the paths for the simulation files     
-    m0f   = get_files(m0d  ,proc,flag) # ctrl_files 
-    m1e5f = get_files(m1e5d,proc,flag)
-    m1e6f = get_files(m1e6d,proc,flag)
+    # Get all the paths for all the simulation files     
+        # again, this is a list that has the form 
+        # mlist 
+    af = []
+    for m in mlist:
+        af.append(get_files(mdict[m], proc, flag, num_files=n)) 
 
     # Make sure ifrm and iani[1] are not out of range 
-    n = len(m0f[0]) 
+    n = len(af[0][0]) 
     if (ifrm > n-1): 
         ifrm = n-1 
     if (iani[1] > n-1):
         iani[1] = n-1 
 
     # now do the data analysis 
-    tarr, dat1e5 = get_stats(m1e5f, quant, stat, ctrl_files = m0f,rmn=rmn,rmx=rmx)
-    tarr, dat1e6 = get_stats(m1e6f, quant, stat, ctrl_files = m0f,rmn=rmn,rmx=rmx) 
-   
+    dats = []
+    # exclude the control sim
+    for f in af:
+        tarr, dat = get_stats(f, quant, stat, ctrl_files = af[0], rmn=rmn, rmx=rmx)
+        dats.append(dat) 
+
     # create dictionaries of results  
     #    first get rid of simulations that didn't finish
     #    the directories of the sims that didn't finish 
     #    are marked by 'removed', c.f. get_files 
-    m1e5d_trim = [x for x in m1e5d if x != 'removed']
-    m1e6d_trim = [x for x in m1e6d if x != 'removed']
-        # key - sim directory: value - mse 
-    dict1e5 = dict(zip(m1e5d_trim,dat1e5)) 
-    dict1e6 = dict(zip(m1e6d_trim,dat1e6))
+    m_dirs_trim = []
+    dict_list   = [] 
+    for m in mlist:
+        m_dirs_trim.append([x for x in mdict[m] if x != 'removed'])
+        # key - sim directory: value - mse
+    for (md,d) in zip(m_dirs_trim,dats):
+        dict_list.append(dict(zip(md,d))) 
 
-    
+    # Stuff for plotting 
+    lines  = ['-','--','-.',':']
+    colors = ['r','g','b','m','k','c','r']  # colors for each mass 
+    markrs = ['s','p','^','o','*','d','<']
+    masses = mlist
+
     # plotting section 
     fig = plt.figure(facecolor='white')
     if stat == 'cmf': 
         #   set parameters for the avals 
-        amin  = 0.8*np.min(dat1e5)
-        amax  = 1.2*np.max(dat1e6)
-        da    = 2*(amax-amin)/len(dat1e6)
+        amin  = 0.8*np.min(dats[ 0])
+        amax  = 1.2*np.max(dats[1])
+        da    = 2*(amax-amin)/len(dats[1])
         avals = np.arange(amin,amax,da)
 
-        lines = ['-','--','-.',':']
-
+        
         # sort the data based on param
-        groups1e5, params = get_sortdat(m1e5d_trim, param, inr3000) 
-        groups1e6, params = get_sortdat(m1e6d_trim, param, inr3000)
+        groups = []
+        for mdt in m_dirs_trim:
+            group, params = get_sortdat(mdt, param, inr3000)
+            groups.append(group)
 
         if anim:
             line1 = []
-            for (l,p,g) in zip(lines,params,groups1e5):
-                dat   = np.array([dict1e5[d][ifrm] for d in g])
-                fvals = get_cmf(dat,avals)
-                line1.append(plt.plot(avals, fvals,'r'+l+'x',
-                         label=sym['m1e5']+', '+sym[param]+'='+str(p)))
-            line2 = [] 
-            for (l,p,g) in zip(lines,params,groups1e6):
-                dat   = np.array([dict1e6[d][ifrm] for d in g])
-                fvals = get_cmf(dat,avals)
-                line2.append(plt.plot(avals, fvals,'g'+l+'+',
-                             label=sym['m1e6']+', '+sym[param]+'='+str(p)))
+            # Now loop over masses and plot
+            for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
+                for (l,p,g) in zip(lines,params,mgroup):
+                    dat   = np.array([md[d][ifrm] for d in g])
+                    fvals = get_cmf(dat,avals)
+                    line1.append(plt.plot(avals, fvals,c+l+m,
+                             label=sym[mstr]+', '+sym[param]+'='+str(p)))
+            
             def animate(ifrm):
-                iline = range(len(line1))
-                for (il,l,p,g) in zip(iline,lines,params,groups1e5):
-                    dat   = np.array([dict1e5[d][ifrm] for d in g])
-                    fvals = get_cmf(dat,avals)
-                    line1[il][0].set_ydata(fvals)
-                for (il,l,p,g) in zip(iline,lines,params,groups1e6):
-                    dat   = np.array([dict1e6[d][ifrm] for d in g])
-                    fvals = get_cmf(dat,avals)
-                    line2[il][0].set_ydata(fvals)
+                # Now loop over masses and plot
+                i = 0
+                for c,mgroup,md in zip(colors,groups,dict_list):
+                    for (l,p,g) in zip(lines,params,mgroup):
+                        dat   = np.array([md[d][ifrm] for d in g])
+                        fvals = get_cmf(dat,avals)
+                        line1[i][0].set_ydata(fvals)
+                        i += 1 
                 plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
                 return  
 
             ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]), repeat=False)
 
         else: 
-            for (l,p,g) in zip(lines,params,groups1e5):
-                dat   = np.array([dict1e5[d][ifrm] for d in g])
-                fvals = get_cmf(dat,avals)
-                plt.plot(avals, fvals,'r'+l+'x',
-                         label=sym['m1e5']+', '+sym[param]+'='+str(p))
-            
-            for (l,p,g) in zip(lines,params,groups1e6):
-                dat   = np.array([dict1e6[d][ifrm] for d in g])
-                fvals = get_cmf(dat,avals)
-                plt.plot(avals, fvals,'g'+l+'+',
-                         label=sym['m1e6']+', '+sym[param]+'='+str(p))
+             # Now loop over masses and plot
+            for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
+                for (l,p,g) in zip(lines,params,mgroup):
+                    dat   = np.array([md[d][ifrm] for d in g])
+                    fvals = get_cmf(dat,avals)
+                    plt.plot(avals, fvals,c+l+m,
+                             label=sym[mstr]+', '+sym[param]+'='+str(p))
 
+            
             plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
         
         # These are the same whether doing animation or not 
@@ -570,34 +680,50 @@ def main():
 
     else: 
         if param == 'number':
-            x = range(len(m1e5d_trim))
-            for x,d in zip(x,m1e5d_trim):
-                plt.semilogy(x,dict1e5[d],'rx')
-            x = range(len(m1e6d_trim))
-            for x,d in zip(x,m1e6d_trim):
-                plt.semilogy(x,dict1e6[d],'g+')
+            for mdt,md,c,mstr,m in zip(m_dirs_trim,dict_list,colors,masses,markrs):
+                xvals = range(len(mdt))
+                for x,d in zip(xvals,mdt):
+                    if x == 0:
+                        if 'ts' in stat:
+                            plt.plot(md[d][0],md[d][1],c+m,label=sym[mstr])
+                        else:
+                            plt.semilogy(x,md[d],c+m,label=sym[mstr])
+                    else:
+                        if 'ts' in stat:
+                            plt.plot(md[d][0],md[d][1],c+m)
+                        else:
+                            plt.semilogy(x,md[d],c+m)
+            
             plt.ylabel(stat+'('+quant+', '+quant+'$_{control}$)')
-            plt.xlabel('Simulation number') 
+            if 'ts' in stat:
+                plt.xlabel('max(<'+quant+'>)') 
+            else:
+                plt.xlabel('Simulation number') 
+            plt.legend(loc=4)
         
         else: 
-            groups1e5, params = get_groups(m1e5d_trim, param, inr3000)
-            groups1e6, params = get_groups(m1e6d_trim, param, inr3000)
 
-            for g in groups1e5:
-                vals = [dict1e5[d] for d in g]
-                if len(vals) == len(params):
-                    plt.semilogy(params, vals,'r-') 
-            for g in groups1e6:
-                vals = [dict1e6[d] for d in g]
-                if len(vals) == len(params):
-                    plt.semilogy(params, vals,'g-') 
-            
+            # sort the data based on param
+            groups = []
+            for mdt in m_dirs_trim:
+                group, params = get_groups(mdt, param, inr3000)
+                groups.append(group)
+
+            for mgroup,mdt,md,c,mstr,l in zip(groups,m_dirs_trim,dict_list,colors,masses,lines):
+                for g in mgroup:
+                    vals = [md[d] for d in g]
+                    if len(vals) == len(params):
+                        plt.semilogy(params,vals,c+l,alpha=0.8)
+
             plt.xlabel(sym[param]+' '+units[param])
             plt.ylabel(stat+'('+quant+', '+quant+'$_{control}$)')
     
     
     if save:
-        plt.savefig(quant+stat+param+'.eps') 
+        if anim:
+            ani.save(quant+stat+param+'.mp4')
+        else:
+            plt.savefig(quant+stat+param+'.eps') 
     else:
         plt.show() 
     

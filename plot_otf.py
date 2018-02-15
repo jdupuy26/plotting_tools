@@ -12,6 +12,10 @@ from matplotlib.pyplot import cm
 from mpl_toolkits.mplot3d import Axes3D 
 # scipy imports 
 from scipy.optimize import curve_fit
+from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
+from scipy.signal import argrelextrema
+import scipy.interpolate as itp
 
 # Import from correct directory
 import socket as s
@@ -146,10 +150,26 @@ def get_title(quant,comp):
 
 #================================
 # exp_func() function
-def exp_func(x,a,b,c):
-    return a*np.exp(-b*x**2) + c
+def exp_func(x,a,b,c=0):
+    return a*np.exp(b*x) + c
         
+#===============================
+def lin_func(x,m,b):
+    return m*x + b
 
+#===============================
+def exp_fit(x,dat, c=0):
+    dat -= c
+    dat = np.log(dat)
+    b, log_a = np.polyfit(x, dat, 1)
+    a = np.exp(log_a)
+    return a, b
+
+#==============================
+def lin_fit(x,dat):
+    m, b = np.polyfit(x, dat, 1)
+    return m, b
+    
 #================================
 # initialize() function
 def init(quant, files, **kwargs):
@@ -256,7 +276,20 @@ def init(quant, files, **kwargs):
         elif quant == 'A2':
             data = [r, A2]    
         elif quant == '<A1>':
-            data = np.mean(A1[:,(rmn < r) & (r < rmx)],axis=1)
+            # Get r values of peaks in bar zone
+            rbar_peaks  = r[np.argmax(A1[:,(0 < r) & ( r < 1200)],axis=1)]
+            # Get r values of peaks in disc zone
+            rdisc_peaks = r[np.argmax(A1[:,(rmn < r) & (r < rmx)],axis=1) + 197]
+
+            diff = rdisc_peaks - rbar_peaks
+            # Average 
+            avg = np.mean(A1[:, (rmn<r) & (r < rmx)],axis=1)
+            try:
+                mxi = int(tarr[ diff > np.max(diff)/4.][0] - 250.)
+            except IndexError:
+                mxi = np.argmax(avg)  
+
+            data = (avg, mxi)
         elif quant == '<A2>':
             data = np.mean(A2[:,(rmn < r) & (r < rmx)],axis=1)
     
@@ -317,7 +350,7 @@ def main():
                              "  .               \n"
                              "  n: tsim = n*dt_dump\n")
     parser.add_argument("--rmnmx", dest="rmnmx",nargs=2,required=False,
-                        default=[params[0].x1min, params[0].x1max],type=float,
+                        default=[1200., 4000.],type=float,
                         help="Average A1 from rmn to rmx") 
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
@@ -328,14 +361,17 @@ def main():
     parser.add_argument("--wire", dest='wire',action='store_true',
                         default=False,
                         help="Switch to make a 3d wireframe plot")
-    parser.add_argument("--efit", dest="efit",action='store_true',
-                        default=False,
-                        help="Switch to do exp fit for <A1> perturbations")
+    parser.add_argument("--fit", dest="fit",type=str,
+                        default='None',
+                        help="Switch to do fit for <A1> perturbations")
     parser.add_argument("--comp", dest="comp",type=str,
                         default='None',
                         help="String to compare measurement to control files:\n"
                              "  sub: Subtract control from sim and take abs value\n"
                              "  div: Divide sim by control")
+    parser.add_argument("--interp", dest="interp",action='store_true',
+                        default=False,
+                        help="Switch to do interpolation on <A1>")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -348,8 +384,16 @@ def main():
     rmnmx = args.rmnmx
     cmap  = args.cmap
     wire  = args.wire
-    efit  = args.efit
+    fit   = args.fit
     comp  = args.comp
+    interp= args.interp
+
+    if   fit == 'exp':
+        fit_func = exp_fit
+        m_func   = exp_func
+    elif fit == 'lin':
+        fit_func = lin_fit
+        m_func   = lin_func
 
     # Conflicting argument checks 
     if iang > Nang:
@@ -371,15 +415,20 @@ def main():
         quit()
 
     # Get the data
-    tarr, data = init(quant, otf_files, prec=32, 
-                      nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
+    if quant == '<A1>':
+        tarr, (data, mxi) = init(quant, otf_files, prec=32,
+                               nx1_dom=nx1_dom, Nang=Nang, rmnmx = rmnmx)
+    else:
+        tarr, data = init(quant, otf_files, prec=32, 
+                          nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
+    
     print("       thvcs = %1.3e [Myr]\n"
           "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
 
     # Check if comparing to control simulation
     if comp != 'None':
-        ctrl_path  = "/srv/analysis/jdupuy26/sys_study2/"+\
-                     "m0/te265/rc400/r1100/a0.0/fac1.0/"
+        ctrl_path  = "/srv/analysis/jdupuy26/longevity_study/"+\
+                     "m0.0/te265/rc400/r1100/a0.0/fac1.0/"
         ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
         ctrl_files.sort()
         nctrl      = len(ctrl_files)
@@ -435,19 +484,36 @@ def main():
         quant == 'LoR' or quant == 'RoL' or
         quant == '<A1>' or quant == '<A2>'):
         # Do plotting
-        tarr -= 250
+        
         plt.figure(figsize=(10,8))
         plt.plot(tarr, data,'bo')
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
         
         # Fit perturbation to exponential
-        if quant == '<A2>' and efit:
-            #mxi = np.argmax(data) 
-            popt, pcov = curve_fit(exp_func,tarr,data,bounds=(0,[1,10,1]))
-            plt.plot(tarr,exp_func(tarr,*popt),'k--',label='Exp fit')
-            print(popt)
-            print(np.sqrt(np.diag(pcov)))
+        if quant == '<A1>' and fit != 'None':
+            
+            popt = fit_func(tarr[mxi:], data[mxi:]) 
+
+            mx = np.max(data)
+            ts_half = tarr[data > mx/2.0][-1] - tarr[data > mx/2.0][0]
+
+            plt.plot(tarr,m_func(tarr,*popt),'k--',label=fit+' fit')
+            print('[main]: Half life for <A1> perturbation: %1.2f' %( -1.0/popt[1] * np.log(2) ) )
+            print('[main]: Time scale based on     1/2 max: %1.2f' %( ts_half ) )
+
+        if quant == '<A1>' and interp:
+            f = UnivariateSpline(tarr,data,k=2,s=1.0)
+            #f = interp1d(tarr[::2], data[::2], kind='linear',fill_value='extrapolate')
+            tnew = np.arange(0,1000,1) 
+            tcut = tnew[np.where(f(tnew) < data[0])]
+            
+            if len(tcut)==0:
+                f = UnivariateSpline(tarr,data,k=1,s=1.0)
+                tcut = tnew[np.where(f(tnew) < data[0])] 
+            #print(tcut[0]) 
+            plt.plot(tarr,f(tarr),'r--') 
+            plt.plot(tarr,data[0]*np.ones(len(data)),'k-')
         if save:
             print("[main]: Saving figure")
             plt.savefig(quant+".eps")
@@ -565,6 +631,9 @@ def main():
     # Handle plotting of lopsidedness parameters
     elif quant == 'A1' or quant == 'A2':
         xstr = 'r [pc]'
+        # setup axes
+        fig, ax = plt.subplots(figsize=(10,8),facecolor='white')
+        
         # unpack data
         r, A = data[0], data[1] 
 
@@ -582,13 +651,10 @@ def main():
             R, T = np.meshgrid(rc,tc)
             
             if cmap:
-                # setup axes
-                fig, ax = plt.subplots(figsize=(10,8),facecolor='white')
                 # Make the colormap
                 im = ax.pcolormesh(R,T,A,cmap='magma')
                 cbar = plt.colorbar(im,pad=0.1,label=get_title(quant,comp)) 
             else: 
-                fig = plt.figure()
                 ax  = fig.add_subplot(111,projection='3d')
                 surf = ax.plot_surface(R,T,A,rstride=3,cstride=3,cmap='rainbow',shade=False)
                 ax.set_zlabel(get_title(quant,comp))
