@@ -125,7 +125,8 @@ def get_quant(file,quant,units,precision=32):
     '''
     # Define dictionary for quants
     all_quants = {'E':e, 'ie':ie, 'd':d,
-                  'n':d*ucgs.rhos/(ucgs.m_h), 'p':gamm1*ie,
+                  'n':d*ucgs.rhos/(ucgs.m_h), 'pie':gamm1*ie,
+                  'p':gamm1*(e - 0.5*(M1**2.+M2**2.+M3**2.)/d),
                   'T':gamm1*ie*ucgs.esdens/(ucgs.k_b * ( d*ucgs.rhos/ucgs.m_h)),
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
                   'v1':M1/d,'v2':M2/d,'v3':M3/d,
@@ -177,7 +178,7 @@ def get_stitch(pdict,quant,units=0):
     tarr = np.zeros(nf)
     x1   = np.zeros(nx1)
     x2   = np.zeros(nx2) 
-
+    '''
     for iff in range(nf):
         # Define processor index
         ip = 0
@@ -201,6 +202,29 @@ def get_stitch(pdict,quant,units=0):
 
                 # Update processor index
                 ip += 1
+    '''
+    # This runs faster than the above since it doesn't 
+        # have to change directories so much
+    # Define processor index
+    ip = 0
+    for ip2 in range(ngridx2):
+        fac2     = ip2%ngridx2 
+        for ip1 in range(ngridx1): 
+            fac1     = ip1%ngridx1
+            # Define processor key
+            pkey     = 'id'+str(ip)
+            for iff in range(nf): 
+                # Get filename
+                fnm      = pkey + '/' + pdict[pkey][iff]
+                # Fill data array
+                data = get_quant(fnm,quant,units) 
+                # parse data 
+                tarr[iff]                              = data[0]
+                x1[fac1*npx1:npx1*(1+fac1)]            = data[1]
+                x2[fac2*npx2:npx2*(1+fac2)]            = data[2]
+                quant_arr[iff,fac2*npx2:npx2*(1+fac2),
+                              fac1*npx1:npx1*(1+fac1)] = data[3]
+            ip += 1
 
     # Note x1 is converted to kpc
     return tarr, x1/1.e3, x2, quant_arr
@@ -260,6 +284,7 @@ def get_labels(quant,iunit=0,log=False):
     lab_quants = {'E':'Energy density', 'ie':'Internal energy density', 
                   'd':'$\Sigma$',
                   'n':'Column density', 'p':'Surface pressure',
+                  'pie':'Surface pressure (from U.IE)', 
                   'T':'T',
                   'M':'M$_{tot}$',
                   'v1':'v$_R$','v2':'v$_{\phi}$','v3':'v$_z$',
@@ -274,6 +299,7 @@ def get_labels(quant,iunit=0,log=False):
     # Define dictionary for units 
     lab_unitsCOMP = {'E':' [M$_{\odot}$ Myr$^{-2}$]','ie':' [M$_{\odot}$ Myr$^{-2}$]',
                      'd':' [M$_{\odot}$ pc$^{-2}$]', 'p':' [M$_{\odot}$ Myr$^{-2}$]',
+                     'pie':' [M$_{\odot}$ Myr$^{-2}$]',
                      'T':' [K]', 'M': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$',
                      'v1':' [pc Myr$^{-1}$]', 'v2':' [pc Myr$^{-1}$]','v3':' [pc Myr$^{-1}$]', 
                      'M1': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 'M2': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 
@@ -282,6 +308,7 @@ def get_labels(quant,iunit=0,log=False):
 
     lab_unitsCGS  = {'E':' [g s$^{-2}$]','ie':' [g s$^{-2}$]',
                      'd':' [g cm$^{-2}$]', 'p':' [g s$^{-2}$]',
+                     'pie':' [g s$^{-2}$]',
                      'T':' [K]', 'M': ' [g cm$^{-1}$ s$^{-1}]$',
                      'v1':' [cm s$^{-1}$]', 'v2':' [cm s$^{-1}$]','v3':' [cm s$^{-1}$]', 
                      'M1': ' [g cm$^{-1}$ s$^{-1}]$', 'M2': ' [g cm$^{-1}$ s$^{-1}]$', 
@@ -290,6 +317,7 @@ def get_labels(quant,iunit=0,log=False):
    
     lab_unitsSI   = {'E':' [kg s$^{-2}$]','ie':' [kg s$^{-2}$]',
                      'd':' [kg m$^{-2}$]', 'p':' [kg s$^{-2}$]',
+                     'pie':' [kg s$^{-2}$]',
                      'T':' [K]', 'M': ' [kg m$^{-1}$ s$^{-1}]$',
                      'v1':' [m s$^{-1}$]', 'v2':' [m s$^{-1}$]','v3':' [m s$^{-1}$]', 
                      'M1': ' [kg m$^{-1}$ s$^{-1}]$', 'M2': ' [kg m$^{-1}$ s$^{-1}]$', 
@@ -440,7 +468,9 @@ def main():
 
         ax1.set_title('t = %1.1f [Myr]' %(tarr[iani[0]]) )
         im   = ax1.pcolorfast(x1cf,x2cf, imgs[iani[0]], vmin=qmin,vmax=qmax)
+        im.set_rasterized(True) 
         cbar = fig.colorbar(im,label=clab,cax=cax) 
+        
 
         def animate(ifrm):
             # Clear figure 
@@ -451,6 +481,7 @@ def main():
             ax1.set_title('t = %1.1f [Myr]' %(tarr[ifrm]) )
             # Plot 
             im   = ax1.pcolorfast(x1cf,x2cf, imgs[ifrm], vmin=qmin,vmax=qmax)
+            im.set_rasterized(True) 
             # Set labels for x,y
             ax1.set_xlabel(xlab)
             ax1.set_ylabel(ylab)
@@ -532,15 +563,19 @@ def main():
     
         
     if save:
+        mydir  = '/srv/analysis/jdupuy26/figures/'
+        # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
+        #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
+        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
         if anim:
             print("[main]: Saving animation")
-            ani.save(base+quant+'.gif',writer='imagemagick')
+            ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',writer='imagemagick')
         elif pflag:
             print('[main]: Saving panel plot')
-            plt.savefig(base+'_'+quant+'.eps', format='eps',bbox_inches='tight')
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps', format='eps',bbox_inches='tight')
         else:
             print("[main]: Saving frame")
-            plt.savefig(base+'_'+quant+str(ifrm)+'.eps', format='eps',bbox_inches='tight')
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.eps', format='eps',bbox_inches='tight')
     else:
         plt.show() 
     
