@@ -95,7 +95,7 @@ def get_files():
 
 #\func get_quant 
 # gets quantity 
-def get_quant(file,quant,units,precision=32):
+def get_quant(file,quant,units,precision=32,omg=0.064424,ctrace=False):
     #read in binary file
     nx1,nx2,nx3,x1,x2,x3,\
     d,M1,M2,M3,e,ie,s,\
@@ -123,17 +123,30 @@ def get_quant(file,quant,units,precision=32):
     M3 *= u.momsdens
     cs *= u.v
     '''
+    
+    # Deal with potentially empty nscalar
+    if s.size:
+        s0 = s[:,:,:,0]
+        s1 = s[:,:,:,1]
+    else: 
+        s0 = np.zeros( d.shape )
+        s1 = np.zeros( d.shape ) 
+    
     # Define dictionary for quants
     all_quants = {'E':e, 'ie':ie, 'd':d,
                   'n':d*ucgs.rhos/(ucgs.m_h), 'pie':gamm1*ie,
                   'p':gamm1*(e - 0.5*(M1**2.+M2**2.+M3**2.)/d),
                   'T':gamm1*ie*ucgs.esdens/(ucgs.k_b * ( d*ucgs.rhos/ucgs.m_h)),
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
-                  'v1':M1/d,'v2':M2/d,'v3':M3/d,
+                  'v1':M1/d,'v2':M2/d + omg*x1,'v3':M3/d,
                   'M1':M1,'M2':M2,'M3':M3,
                   'V':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
-                  's1':s[:,:,:,1]}
-    return t, x1, x2, all_quants[quant] 
+                  'cs': gamm1*ie/d, 
+                  's1': s1}
+    if ctrace:
+        return t, x1, x2, all_quants[quant], all_quants['s1']
+    else:
+        return t, x1, x2, all_quants[quant] 
 
 #\func get_athinput():
 # reads athinput and returns base, params
@@ -148,7 +161,7 @@ def get_athinput():
 #\func get_stitch
 # given pdict, this will stitch together an image
 # Here pdict is the dictionary from get_files()
-def get_stitch(pdict,quant,units=0):
+def get_stitch(pdict,quant,myfrms,units=0,ctrace=False):
     
     # read athinput
     base, params = get_athinput() 
@@ -170,41 +183,18 @@ def get_stitch(pdict,quant,units=0):
     npx1    = nx1/ngridx1
     npx2    = nx2/ngridx2 
     # get no. of files in each processor
-    nf    = len(pdict['id0']) # assumes all are same 
+    #nf    = len(pdict['id0']) # assumes all are same 
+    nf     = len(myfrms) 
 
     # Make array to hold quant for all time
     quant_arr = np.zeros((nf, nx2, nx1))
+    if ctrace:
+        c_arr = np.zeros((nf, nx2, nx1)) 
     # Make time, x1, x2 arrays 
     tarr = np.zeros(nf)
     x1   = np.zeros(nx1)
     x2   = np.zeros(nx2) 
-    '''
-    for iff in range(nf):
-        # Define processor index
-        ip = 0
-        for ip2 in range(ngridx2):
-            fac2     = ip2%ngridx2 
-            for ip1 in range(ngridx1): 
-                # Define factors for dealing with parallel data 
-                fac1     = ip1%ngridx1
-                # Define processor key
-                pkey     = 'id'+str(ip)
-                # Get filename
-                fnm      = pkey + '/' + pdict[pkey][iff]
-                # Fill data array
-                data = get_quant(fnm,quant,units) 
-                # parse data 
-                tarr[iff]                              = data[0]
-                x1[fac1*npx1:npx1*(1+fac1)]            = data[1]
-                x2[fac2*npx2:npx2*(1+fac2)]            = data[2]
-                quant_arr[iff,fac2*npx2:npx2*(1+fac2),
-                              fac1*npx1:npx1*(1+fac1)] = data[3]
 
-                # Update processor index
-                ip += 1
-    '''
-    # This runs faster than the above since it doesn't 
-        # have to change directories so much
     # Define processor index
     ip = 0
     for ip2 in range(ngridx2):
@@ -213,39 +203,77 @@ def get_stitch(pdict,quant,units=0):
             fac1     = ip1%ngridx1
             # Define processor key
             pkey     = 'id'+str(ip)
-            for iff in range(nf): 
+            i        = 0            # index for filling arrays
+            for iff in myfrms: 
                 # Get filename
                 fnm      = pkey + '/' + pdict[pkey][iff]
                 # Fill data array
-                data = get_quant(fnm,quant,units) 
+                data = get_quant(fnm,quant,units,omg=params[0].omg,ctrace=ctrace) 
                 # parse data 
-                tarr[iff]                              = data[0]
+                tarr[i]                                = data[0]
                 x1[fac1*npx1:npx1*(1+fac1)]            = data[1]
                 x2[fac2*npx2:npx2*(1+fac2)]            = data[2]
-                quant_arr[iff,fac2*npx2:npx2*(1+fac2),
+                quant_arr[i,fac2*npx2:npx2*(1+fac2),
                               fac1*npx1:npx1*(1+fac1)] = data[3]
+                if ctrace:
+                    c_arr[i,fac2*npx2:npx2*(1+fac2),
+                              fac1*npx1:npx1*(1+fac1)] = data[4]
+                i += 1
             ip += 1
 
     # Note x1 is converted to kpc
-    return tarr, x1/1.e3, x2, quant_arr
+    if ctrace:
+        return tarr, x1/1.e3, x2, quant_arr, c_arr
+    else:
+        return tarr, x1/1.e3, x2, quant_arr
 #------------------------------------------------------#
 
 #---------- MISCELLANIOUS FUNCTIONS -------------------# 
 # \func get_fc()
 # given cell centered x1, x2, returns face centered grid 
 # THIS ASSUMES ilog=1 in x1-dir (i.e. uniform log spacing) 
-def get_fc():
+def get_fc(cart):
+    base, params = get_athinput() 
+   
+    if cart:
+        x1f = np.linspace(params[0].x1min/1.e3,
+                          params[0].x1max/1.e3,params[0].nx1+1)
+        x2f = np.linspace(params[0].x2min/1.e3,
+                          params[0].x2max/1.e3,params[0].nx2+1) 
+    else:
+        # x1 direction (convert to kpc) 
+        lx1f = np.linspace(np.log(params[0].x1min/1.e3),
+                           np.log(params[0].x1max/1.e3),params[0].nx1+1)
+        # x2 direction
+        x2f  = np.linspace(       params[0].x2min,
+                                  params[0].x2max, params[0].nx2+1) 
+        x1f  = np.exp(lx1f) 
+        
+    return np.meshgrid(x1f, x2f, indexing='xy')   
+
+# \func get_fc2()
+# gets fc2 values with nx1 cells, not correct, 
+#   only used for cloud tracing,
+#   so that full range of 2pi is plotted
+# THIS ASSUMES ilog=1 in x1-dir (i.e. uniform log spacing) 
+def get_fc2(cart):
     base, params = get_athinput() 
     
-    # x1 direction (convert to kpc) 
-    lx1f = np.linspace(np.log(params[0].x1min/1.e3),
-                       np.log(params[0].x1max/1.e3),params[0].nx1+1)
-    # x2 direction
-    x2f  = np.linspace(       params[0].x2min,
-                              params[0].x2max, params[0].nx2+1) 
-    x1f  = np.exp(lx1f) 
+    if cart:
+        x1f = np.linspace(params[0].x1min/1.e3,
+                          params[0].x1max/1.e3,params[0].nx1)
+        x2f = np.linspace(params[0].x2min/1.e3,
+                          params[0].x2max/1.e3,params[0].nx2) 
+    else:
+        # x1 direction (convert to kpc) 
+        lx1f = np.linspace(np.log(params[0].x1min/1.e3),
+                           np.log(params[0].x1max/1.e3),params[0].nx1)
+        # x2 direction
+        x2f  = np.linspace(       params[0].x2min,
+                                  params[0].x2max, params[0].nx2) 
+        x1f  = np.exp(lx1f) 
     
-    return np.meshgrid(x1f, x2f, indexing='xy')   
+    return np.meshgrid(x1f, x2f, indexing='xy') 
    
 
 #------------------------------------------------------#
@@ -289,6 +317,7 @@ def get_labels(quant,iunit=0,log=False):
                   'M':'M$_{tot}$',
                   'v1':'v$_R$','v2':'v$_{\phi}$','v3':'v$_z$',
                   'M1':'$\Sigma$ v$_R$','M2':'$\Sigma$ v$_{\phi}$','M3':'$\Sigma$ v$_{z}$',
+                  'cs':'c$_s$', 
                   'V':'V$_{tot}$',
                   's1':'$\Sigma_c$'}
 
@@ -304,6 +333,7 @@ def get_labels(quant,iunit=0,log=False):
                      'v1':' [pc Myr$^{-1}$]', 'v2':' [pc Myr$^{-1}$]','v3':' [pc Myr$^{-1}$]', 
                      'M1': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 'M2': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 
                      'M3': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$','V':' [pc Myr^${-1}$]',
+                     'cs': ' [pc Myr$^{-1}$]',
                      's1': ' [M$_{\odot}$ pc$^{-2}$]'}
 
     lab_unitsCGS  = {'E':' [g s$^{-2}$]','ie':' [g s$^{-2}$]',
@@ -313,6 +343,7 @@ def get_labels(quant,iunit=0,log=False):
                      'v1':' [cm s$^{-1}$]', 'v2':' [cm s$^{-1}$]','v3':' [cm s$^{-1}$]', 
                      'M1': ' [g cm$^{-1}$ s$^{-1}]$', 'M2': ' [g cm$^{-1}$ s$^{-1}]$', 
                      'M3': ' [g cm$^{-1}$ s$^{-1}]$', 'V':' [cm s$^{-1}$]',
+                     'cs': ' [cm s$^{-1}$]',
                      's1': ' [g cm$^{-2}$]'}
    
     lab_unitsSI   = {'E':' [kg s$^{-2}$]','ie':' [kg s$^{-2}$]',
@@ -322,6 +353,7 @@ def get_labels(quant,iunit=0,log=False):
                      'v1':' [m s$^{-1}$]', 'v2':' [m s$^{-1}$]','v3':' [m s$^{-1}$]', 
                      'M1': ' [kg m$^{-1}$ s$^{-1}]$', 'M2': ' [kg m$^{-1}$ s$^{-1}]$', 
                      'M3': ' [kg m$^{-1}$ s$^{-1}]$', 'V':' [m s$^{-1}$]',
+                     'cs': ' [m s$^{-1}$]',
                      's1': ' [kg m$^{-2}$]'}
 
     # Handle units 
@@ -350,6 +382,7 @@ def main():
     ctable = 'magma'
     plt.rcParams['image.cmap'] = ctable
     base, params = get_athinput() 
+
 
     # Read in system arguments
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
@@ -387,12 +420,15 @@ def main():
     parser.add_argument("--log",dest="log",action='store_true',
                         default=False,
                         help="Switch to take log images, default is False")
-    parser.add_argument("--cloudtrace",dest="cloudtrace",action='store_true',
+    parser.add_argument("--ctrace",dest="ctrace",action='store_true',
                         default=False, help="Switch to overplot a contour for the cloud location\n")
     parser.add_argument("--units",dest="units",type=int,required=False,
                         default=0, help="units: 0-comp,1-cgs,2-SI")  
+    parser.add_argument("--levels",dest="levels",type=int,required=False,
+                        default=1,help="no. oflevels for cloud tracing")
+    parser.add_argument("--cart", dest="cart",action='store_true',
+                        default=False, help="Switch for cartesian simulations") 
 
-    
     
     # parsing arguments            
     args  = parser.parse_args()
@@ -402,25 +438,54 @@ def main():
     ifrm  = args.ifrm
     save  = args.save
     log   = args.log
-    cloudtrace = args.cloudtrace
     mnx, mxx = args.mnmx
-    iunit = args.units 
-    qminmax = args.qminmax
+    iunit    = args.units 
+    qminmax  = args.qminmax
+    ctrace   = args.ctrace
+    levels   = args.levels
+    cart     = args.cart
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
     # Get panel flag
     pflag = True if np.size(ifrm) > 1 else False 
+    
     if np.size(ifrm) == 1: ifrm = ifrm[0]
 
     
     # get files 
     pdict = get_files() 
+    # Change default iani values
+    if iani[1] == 0:
+        iani[1] = len(pdict['id0']) 
+
+    # determine myframes
+    if anim:
+        myfrms = range(iani[0],iani[1])
+    elif pflag:
+        myfrms = ifrm
+    else: 
+        myfrms = [ifrm] 
     # get data
-    tarr, x1, x2, imgs = get_stitch(pdict,quant,iunit)  
+    if ctrace:
+        tarr, x1, x2, imgs, imgc = get_stitch(pdict,quant,myfrms,iunit,ctrace=ctrace)  
+        # Normalize imgc
+        imgc /= np.max(imgc) 
+    else:
+        tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
+
     # get face centered meshgrid
-    x1f, x2f           = get_fc() 
+    x1f, x2f           = get_fc(cart) 
     # get cartesian version of face centered meshgrid
-    x1cf, x2cf = x1f*np.cos(x2f), x1f*np.sin(x2f) 
+    if cart:
+        x1cf, x2cf = x1f, x2f
+    else:
+        x1cf, x2cf = x1f*np.cos(x2f), x1f*np.sin(x2f) 
+    # get cartesian version of 'cell centered' meshgrid
+    x1c, x2c           = get_fc2(cart)
+    if cart:
+        x1cc, x2cc = x1c, x2c
+    else:
+        x1cc, x2cc = x1c*np.cos(x2c),  x1c*np.sin(x2c)
     # get total number of images
     n = len(imgs) 
     # get labels for plots
@@ -434,12 +499,11 @@ def main():
     if anim:
         print("\n[main]: Animating from t = %1.1f [Myr]\n" 
               "                    to t = %1.1f [Myr]\n"
-                    %( tarr[iani[0]], tarr[iani[1]] ) )  
+                    %( tarr[0], tarr[-1] ) )  
     # Take log of data
     if log: 
         imgs[imgs < 0] = 1e-20
         imgs           = np.log10(imgs)  
-   
    
     if not pflag: 
         # Open figure 
@@ -464,11 +528,14 @@ def main():
         if qflag:
             qmin, qmax = qminmax[0], qminmax[1]
         else:
-            qmin, qmax = np.min(imgs[iani[0]:iani[1]]), np.max(imgs[iani[0]:iani[1]]) 
+            qmin, qmax = np.min(imgs), np.max(imgs) 
 
-        ax1.set_title('t = %1.1f [Myr]' %(tarr[iani[0]]) )
-        im   = ax1.pcolorfast(x1cf,x2cf, imgs[iani[0]], vmin=qmin,vmax=qmax)
+        ax1.set_title('t = %1.1f [Myr]' %(tarr[0]) )
+        im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
         im.set_rasterized(True) 
+        if ctrace:
+            if tarr[iani[0]] > params[0].thvcs:
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels,colors='white',alpha=1.0)
         cbar = fig.colorbar(im,label=clab,cax=cax) 
         
 
@@ -482,6 +549,9 @@ def main():
             # Plot 
             im   = ax1.pcolorfast(x1cf,x2cf, imgs[ifrm], vmin=qmin,vmax=qmax)
             im.set_rasterized(True) 
+            if ctrace:
+                if tarr[ifrm] > params[0].thvcs:
+                    imc  = ax1.contour(x1cc,x2cc,imgc[ifrm],levels,colors='white',alpha=1.0)
             # Set labels for x,y
             ax1.set_xlabel(xlab)
             ax1.set_ylabel(ylab)
@@ -494,7 +564,7 @@ def main():
             cbar = fig.colorbar(im,label=clab, cax=cax)
             return 
 
-        ani = animation.FuncAnimation(fig, animate, range(iani[0]+1,iani[1]+1),
+        ani = animation.FuncAnimation(fig, animate, range(len(myfrms)),
                                       repeat=False)
     
     # Handle plotting a panel of subplots
@@ -513,7 +583,7 @@ def main():
         if qflag:
             qmin, qmax = qminmax[0], qminmax[1]
         else:
-            qmin, qmax = np.min(imgs[ifrm]), np.max(imgs[ifrm]) 
+            qmin, qmax = np.min(imgs), np.max(imgs) 
         
         # define ratio
         ratio = float(nxp)/float(nyp) 
@@ -528,8 +598,11 @@ def main():
 
 
         # Now plot
-        for (ax, iff) in zip(axes.flat, ifrm):
+        for (ax, iff) in zip(axes.flat, range(len(ifrm))):
             im = ax.pcolorfast(x1cf,x2cf,imgs[iff],vmin=qmin,vmax=qmax) 
+            if ctrace:
+                if tarr[iff] > params[0].thvcs:  
+                    imc  = ax.contour(x1cc,x2cc,imgc[iff],levels,colors='white',alpha=1.0)
             ax.set_xlim(mnx,mxx)
             ax.set_ylim(mnx,mxx)
             #ax.set_aspect('equal')  
@@ -553,33 +626,38 @@ def main():
         if qflag:
             qmin, qmax = qminmax[0], qminmax[1]
         else:
-            qmin, qmax = np.min(imgs[ifrm]), np.max(imgs[ifrm]) 
+            qmin, qmax = np.min(imgs), np.max(imgs) 
 
-        ax1.set_title('t = %1.1f [Myr]' %(tarr[ifrm]) )
-        im   = ax1.pcolorfast(x1cf,x2cf, imgs[ifrm], vmin=qmin,vmax=qmax)
+        ax1.set_title('t = %1.1f [Myr]' %(tarr[0]) )
+        im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
+        if ctrace:
+            if tarr[0] > params[0].thvcs:
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels,colors='white',alpha=1.0)
         # Same deal here 
         im.set_rasterized(True) 
         cbar = fig.colorbar(im,label=clab,cax=cax) 
     
         
     if save:
-        mydir  = '/srv/analysis/jdupuy26/figures/'
+        #mydir  = '/srv/analysis/jdupuy26/figures/'
+        mydir = os.getcwd()+'/'
         # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
-        #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
-        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
+        myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
+        #myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
         if anim:
-            print("[main]: Saving animation")
+            print("[main]: Saving animation...")
             ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',writer='imagemagick')
         elif pflag:
-            print('[main]: Saving panel plot')
+            print('[main]: Saving panel plot...')
             plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps', format='eps',bbox_inches='tight')
         else:
-            print("[main]: Saving frame")
+            print("[main]: Saving frame...")
             plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.eps', format='eps',bbox_inches='tight')
     else:
         plt.show() 
     
 main() 
+print('Program complete.') 
 
 
 
