@@ -65,8 +65,8 @@ sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
        "A2":"<A2>", "RoL": "M$_{cr,R}$/M$_{cr,L}$", "LoR":"M$_{cr,L}$/M$_{cr,R}$"} 
 
 # units dictionary
-units = {"a":"[rad]","rc":"[pc]","fac":"[unitless]","r":"[pc]",
-         "te":"[Myr]"} 
+units = {"a":" [rad]","rc":" [pc]","fac":" [unitless]","r":" [pc]",
+         "te":" [Myr]"} 
  
 
 #=======FUNCTIONS=================
@@ -118,7 +118,6 @@ def get_files(dirs,proc,flag, num_files):
     # output: a list of lists that for each simulation, contains 
     #         the paths of ever file containing 'flag' 
     # get the files you want to do analysis on 
-    
     m = '???'
     if 'm0' in dirs[0]:
         m = 'm0'
@@ -148,14 +147,15 @@ def get_files(dirs,proc,flag, num_files):
             sfiles = sorted([dirs[i]+proc+'/'+fname for
                           fname in os.listdir(dirs[i]+proc+'/')
                           if flag in fname]) 
-            if len(sfiles) != num_files:
-                print("[get_files]: WARNING, exluding sim that did not complete: %s" %dirs[i])
+            if len(sfiles) < 0.6*num_files:
+                print("[get_files]: WARNING, excluding sim that did not complete: %s" %dirs[i])
                 dirs[i] = 'removed'  # remove this simulation from the directory list
             else: 
                 files.append(sfiles)  
 
         except OSError: 
-            print('[get_files]: WARNING, sim files not present for %s ' % (dirs[i]) )
+            print('[get_files]: WARNING, excluding sim that did not start   : %s ' % (dirs[i]) )
+            dirs[i] = 'removed' # remove this simulation from directory list 
     return files  
 
 #===========================
@@ -211,12 +211,12 @@ def get_groups(dirs, param, inr3000=False):
     print("[get_groups]: Separating files into groups based on param: %s" % (param) ) 
 
     if inr3000: 
-        select = {'rc':['200','400','600','800'],'te':['265','275','285','325'],
-                  'r':['500','1000','2000','3000'],'fac':['0.0','1.0','2.0'],
+        select = {'rc':['100','500'],'te':['325','345'],
+                  'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
                   'a':['0.0','1.5708']}
     else: 
-        select = {'rc':['200','400','600','800'],'te':['265','275','285','325'],
-                  'r':['500','1000','2000'],'fac':['0.0','1.0','2.0'],
+        select = {'rc':['500'],'te':['325','345'],
+                  'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
                   'a':['0.0','1.5708']}
     
     mygroups = []
@@ -228,7 +228,9 @@ def get_groups(dirs, param, inr3000=False):
                 for r in select['r']:
                     for a in select['a']:
                         flag = 'te'+te+'/rc'+rc+'/r'+r+'/a'+a
-                        mygroups.append([x for x in dirs if flag in x]) 
+                        group = [x for x in dirs if flag in x]
+                        if group:
+                            mygroups.append(group) 
     elif param == 'a':
         for te in select['te']:
             for rc in select['rc']:
@@ -240,7 +242,8 @@ def get_groups(dirs, param, inr3000=False):
                             for x in dirs:
                                if flag in x:
                                    group.append(x)  
-                        mygroups.append(group) 
+                        if group:
+                            mygroups.append(group) 
     elif param == 'r':
         for te in select['te']:
             for rc in select['rc']:
@@ -252,7 +255,8 @@ def get_groups(dirs, param, inr3000=False):
                             for x in dirs:
                                if flag in x:
                                    group.append(x)  
-                        mygroups.append(group) 
+                        if group:
+                            mygroups.append(group) 
     elif param == 'rc':
         for te in select['te']:
             for r in select['r']:
@@ -277,7 +281,8 @@ def get_groups(dirs, param, inr3000=False):
                             for x in dirs:
                                if flag in x:
                                    group.append(x)  
-                        mygroups.append(group)  
+                        if group:
+                            mygroups.append(group)  
     else:
         print('[get_groups]: ERROR, param %s not understood, exiting... \n' % param)
         quit()
@@ -298,12 +303,12 @@ def get_sortdat(dirs, param, inr3000=False):
     
     # Decide what param we are plotting
     if inr3000: 
-        select = {'rc':[200,400,600,800],'te':[265,275,285,325],
-                  'r':[500,1000,2000,3000],'fac':[0.0,1.0,2.0],
+        select = {'rc':[200,400,500,600,800],'te':[265,275,285,325,345],
+                  'r':[500,1000,2000,3000],'fac':[-1.0,0.0,1.0,2.0],
                   'a':[0.0,1.5708]}
     else: 
-        select = {'rc':[200,400,600,800],'te':[265,275,285,325],
-                  'r':[500,1000,2000],'fac':[0.0,1.0,2.0],
+        select = {'rc':[200,400,500,600,800],'te':[265,275,285,325,345],
+                  'r':[500,1000,2000],'fac':[-1.0,0.0,1.0,2.0],
                   'a':[0.0,1.5708]}
     try:
         params = select[param]
@@ -391,8 +396,8 @@ def get_stats(files, quant, stat, **kwargs):
         
         # Error check
         if (nctrl != n):
-            print("[get_stat]: Error! no. of ctrl files does not equal no. of sim files!")
-            quit()
+            print("[get_stats]: WARNING! no. of ctrl files does not equal no. of sim files!")
+        #    quit()
 
         # start time loop
         for j in range(n):
@@ -401,19 +406,23 @@ def get_stats(files, quant, stat, **kwargs):
             mcR, mcL,\
             r, ang, vrot,\
             A1, A2         = get_data(files[i][j], **kwargs)
-
-            t, mhvc, rhvc, rpos,\
-            acc_rate, facvhvc, ahvc,\
-            mcR, mcL,\
-            r, ang, vrot,\
-            A1c, A2c       = get_data(ctrl_files[j], **kwargs)
+           
+            # No need to get control files for timescale measures 
+            if 'ts' not in stat:
+                t, mhvc, rhvc, rpos,\
+                acc_rate, facvhvc, ahvc,\
+                mcR, mcL,\
+                r, ang, vrot,\
+                A1c, A2c       = get_data(ctrl_files[j], **kwargs)
 
             if quant == 'A1':
                 tdats[j] = A1
-                tdatc[j] = A1c
+                if 'ts' not in stat:
+                    tdatc[j] = A1c
             elif quant == 'A2':
                 tdats[j] = A2
-                tdatc[j] = A2c 
+                if 'ts' not in stat:
+                    tdatc[j] = A2c 
             else: 
                 print('[get_stats]: quant not understood, exiting...')
                 quit()
@@ -431,10 +440,9 @@ def get_stats(files, quant, stat, **kwargs):
         # time scale measures 
         elif stat == 'ts_cut':
             # time scale measured by time above cutoff
-            cut = 0.01
+            cut = 0.05
             avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) 
             mx  = np.max(avg) 
-            
             try:
                 ts_cut = tarr[avg > cut][-1] - tarr[avg > cut][0]
             except IndexError:
@@ -490,6 +498,7 @@ def get_stats(files, quant, stat, **kwargs):
                       ' setting timescale to 0' % (files[i][0]))
                 ts = 0
             mydata.append( (np.max(avg), ts) ) 
+        
         elif stat == 'ts_exp':
             # timescale measured by fitting data to a exponential
             # NOTE: this is really only a good fit if we do the 
@@ -563,6 +572,7 @@ def main():
     # First find the directories of the simulations
     mdict = get_dirs(os.getcwd(),inr3000)   # dictionary of {mass: mdsim}
     mlist = sorted(os.walk('.').next()[1])  # list of mass directory names
+    mlist = [m for m in mlist if 'restart' not in m] # if restart is in this directory 
 
     
     # Set the processor and unique flag
@@ -585,6 +595,7 @@ def main():
     af = []
     for m in mlist:
         af.append(get_files(mdict[m], proc, flag, num_files=n)) 
+
 
     # Make sure ifrm and iani[1] are not out of range 
     n = len(af[0][0]) 
@@ -616,10 +627,12 @@ def main():
     lines  = ['-','--','-.',':']
     colors = ['r','g','b','m','k','c','r']  # colors for each mass 
     markrs = ['s','p','^','o','*','d','<']
-    masses = mlist
+    masses = mlist 
+
+
 
     # plotting section 
-    fig = plt.figure(facecolor='white')
+    fig = plt.figure(facecolor='white',figsize=(10.,5.))
     if stat == 'cmf': 
         #   set parameters for the avals 
         amin  = 0.8*np.min(dats[ 0])
@@ -681,25 +694,28 @@ def main():
     else: 
         if param == 'number':
             for mdt,md,c,mstr,m in zip(m_dirs_trim,dict_list,colors,masses,markrs):
-                xvals = range(len(mdt))
-                for x,d in zip(xvals,mdt):
-                    if x == 0:
-                        if 'ts' in stat:
-                            plt.plot(md[d][0],md[d][1],c+m,label=sym[mstr])
+                # Exclude control simulation
+                if mstr != 'm0':
+                    xvals = range(len(mdt))
+                    for x,d in zip(xvals,mdt):
+                        if x == 0:
+                            if 'ts' in stat:
+                                plt.plot(md[d][0],md[d][1],c+m,label=sym[mstr])
+                            else:
+                                plt.semilogy(x,md[d],c+m,label=sym[mstr])
                         else:
-                            plt.semilogy(x,md[d],c+m,label=sym[mstr])
-                    else:
-                        if 'ts' in stat:
-                            plt.plot(md[d][0],md[d][1],c+m)
-                        else:
-                            plt.semilogy(x,md[d],c+m)
+                            if 'ts' in stat:
+                                plt.plot(md[d][0],md[d][1],c+m)
+                            else:
+                                plt.semilogy(x,md[d],c+m)
             
-            plt.ylabel(stat+'('+quant+', '+quant+'$_{control}$)')
+            plt.ylabel('$\\tau$ [Myr]')
+            plt.ylim(-10,600) 
             if 'ts' in stat:
-                plt.xlabel('max(<'+quant+'>)') 
+                plt.xlabel('max(<A$_1$>) [unitless]') 
             else:
                 plt.xlabel('Simulation number') 
-            plt.legend(loc=4)
+            plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.)
         
         else: 
 
@@ -708,15 +724,30 @@ def main():
             for mdt in m_dirs_trim:
                 group, params = get_groups(mdt, param, inr3000)
                 groups.append(group)
-
-            for mgroup,mdt,md,c,mstr,l in zip(groups,m_dirs_trim,dict_list,colors,masses,lines):
+                plt.ylim(-10,600) 
+            
+            for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                i = 0 # easy way to handle legends  
                 for g in mgroup:
-                    vals = [md[d] for d in g]
+                    if 'ts' in stat:
+                        vals = [md[d][1] for d in g]
                     if len(vals) == len(params):
-                        plt.semilogy(params,vals,c+l,alpha=0.8)
+                        if i == 0:
+                            plt.plot(params,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                        else:
+                            plt.plot(params,vals,c+m+l,alpha=1.0,linewidth=2.5)
+                        i += 1
+
+
 
             plt.xlabel(sym[param]+' '+units[param])
-            plt.ylabel(stat+'('+quant+', '+quant+'$_{control}$)')
+            plt.ylabel('$\\tau$ [Myr]' )
+            plt.ylim(-10,600) 
+            if min(params) < 0:
+                plt.xlim(1.1*min(params), 1.1*max(params))
+            else:
+                plt.xlim(0.9*min(params), 1.1*max(params)) 
+            plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.) 
     
     
     if save:
