@@ -126,13 +126,13 @@ def get_ylabel(quant):
     elif quant == 'vrot': 
         lab = 'v [pc/Myr]'
     elif quant == 'A1':
-        lab = 'A1 [unitless]'
+        lab = 'A$_1$ [unitless]'
     elif quant == 'A2':
-        lab = 'A2 [unitless]'
+        lab = 'A$_2$ [unitless]'
     elif quant == '<A1>':
-        lab = '<A1> [unitless]'
+        lab = '<A$_1$> [unitless]'
     elif quant == '<A2>':
-        lab = '<A2> [unitless]'
+        lab = '<A$_2$> [unitless]'
     return lab
 
 #================================
@@ -483,12 +483,25 @@ def main():
     if (quant == 'mcR' or quant == 'mcL' or 
         quant == 'LoR' or quant == 'RoL' or
         quant == '<A1>' or quant == '<A2>'):
+
+        # Define cutoff
+        cut = 0.05 
+
         # Do plotting
-        
-        plt.figure(figsize=(10,8))
-        plt.plot(tarr, data,'bo')
+        fig = plt.figure(figsize=(7.,5.0),facecolor='white')
+        plt.plot(tarr, data,'b-',marker='.')
+        plt.plot(tarr, np.ones(len(data))*cut, 'r--') 
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
+
+        # Get time above cutoff <A1> 
+        try:
+            ts = tarr[data > cut][-1] - tarr[data > cut][0]
+        except IndexError:
+            ts = 0.0 
+        # Put on figure
+        plt.text(0.7,0.82,'$\\tau$ = %1.1f [Myr]' %(ts), 
+                 transform=fig.transFigure) 
         
         # Fit perturbation to exponential
         if quant == '<A1>' and fit != 'None':
@@ -514,9 +527,9 @@ def main():
             #print(tcut[0]) 
             plt.plot(tarr,f(tarr),'r--') 
             plt.plot(tarr,data[0]*np.ones(len(data)),'k-')
-        if save:
-            print("[main]: Saving figure")
-            plt.savefig(quant+".eps")
+       # if save:
+       #     print("[main]: Saving figure")
+       #     plt.savefig(quant+".eps")
 
     # for rotation curves
     elif (quant == 'vrot'):
@@ -552,9 +565,9 @@ def main():
                 fig.text(0.04, 0.5, ystr, va='center',rotation='vertical')
                 # title
                 plt.suptitle('t = %1.1f [Myr]' % tarr[ifrm], size='large')
-                if save:
-                    print("[main]: Saving figure")
-                    plt.savefig(quant+str(ifrm)+".eps")
+               # if save:
+               #     print("[main]: Saving figure")
+               #     plt.savefig(quant+str(ifrm)+".eps")
             
             # handle animation   
             elif anim:
@@ -585,9 +598,9 @@ def main():
                 
                 # do the animation
                 ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
-                if save:
-                    print("[main]: Saving animation")
-                    ani.save(quant+".mp4")
+               # if save:
+               #     print("[main]: Saving animation")
+               #     ani.save(quant+".mp4")
             else: 
                 print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
                             "'python plot_otf.py -h' for help.")
@@ -605,9 +618,9 @@ def main():
                 ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                 ax.plot(r, vrot[ifrm, iang], color=c[iang], label='$\\theta$ = %1.1f$^\\circ$' % ang[iang])
                 ax.legend(loc=4)
-                if save:
-                    print("[main]: Saving figure")
-                    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
+                #if save:
+                #    print("[main]: Saving figure")
+                #    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
             # handle animation
             elif anim: 
                 line, = ax.plot(r, vrot[0,iang], color=c[iang], 
@@ -621,9 +634,9 @@ def main():
                     ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                     return line,
                 ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), repeat=False)
-                if save:
-                    print("[main]: Saving animation")
-                    ani.save(quant+str(iang)+".mp4")
+                #if save:
+                #    print("[main]: Saving animation")
+                #    ani.save(quant+str(iang)+".mp4")
             else: 
                 print("[main]: Not sure what to plot; must specify ifrm or anim. Type "
                             "'python plot_otf.py -h' for help.")
@@ -674,9 +687,9 @@ def main():
                 t = tarr[ifrm]
                 ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
                 ax.plot(r, A[ifrm])
-                if save:
-                    print("[main]: Saving figure")
-                    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
+                #if save:
+                #    print("[main]: Saving figure")
+                #    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")
             # handle animation
             elif anim: 
                 line, = ax.plot(r, A[0]) 
@@ -699,6 +712,9 @@ def main():
     # show 
     if save:
         print("[main]: Program complete")
+        mydir  = '/srv/analysis/jdupuy26/figures/'
+        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_')
+        plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps',format='eps',bbox_inches='tight')
     else:
         plt.show()
     #=============================================================
