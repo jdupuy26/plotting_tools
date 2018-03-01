@@ -11,6 +11,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.projections import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 from mpl_toolkits.axisartist.grid_finder import DictFormatter
+from matplotlib import _cntr as cntr 
 # scipy
 from scipy.interpolate import griddata 
 import argparse
@@ -138,7 +139,7 @@ def get_quant(file,quant,units,precision=32,omg=0.064424,ctrace=False):
                   'p':gamm1*(e - 0.5*(M1**2.+M2**2.+M3**2.)/d),
                   'T':gamm1*ie*ucgs.esdens/(ucgs.k_b * ( d*ucgs.rhos/ucgs.m_h)),
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
-                  'v1':M1/d,'v2':M2/d + omg*x1,'v3':M3/d,
+                  'v1':M1/d,'v2':M2/d,'v3':M3/d,
                   'M1':M1,'M2':M2,'M3':M3,
                   'V':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
                   'cs': gamm1*ie/d, 
@@ -332,7 +333,7 @@ def get_labels(quant,iunit=0,log=False):
                      'T':' [K]', 'M': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$',
                      'v1':' [pc Myr$^{-1}$]', 'v2':' [pc Myr$^{-1}$]','v3':' [pc Myr$^{-1}$]', 
                      'M1': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 'M2': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$', 
-                     'M3': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$','V':' [pc Myr^${-1}$]',
+                     'M3': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$','V':' [pc Myr$^{-1}$]',
                      'cs': ' [pc Myr$^{-1}$]',
                      's1': ' [M$_{\odot}$ pc$^{-2}$]'}
 
@@ -428,6 +429,8 @@ def main():
                         default=1,help="no. oflevels for cloud tracing")
     parser.add_argument("--cart", dest="cart",action='store_true',
                         default=False, help="Switch for cartesian simulations") 
+    parser.add_argument("--grid", dest="grid",action='store_true',
+                        default=False, help="Switch to make plot to show grid")
 
     
     # parsing arguments            
@@ -444,6 +447,7 @@ def main():
     ctrace   = args.ctrace
     levels   = args.levels
     cart     = args.cart
+    grid     = args.grid
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
     # Get panel flag
@@ -470,6 +474,14 @@ def main():
         tarr, x1, x2, imgs, imgc = get_stitch(pdict,quant,myfrms,iunit,ctrace=ctrace)  
         # Normalize imgc
         imgc /= np.max(imgc) 
+        # Set contour parameters for ctrace
+        colors=['#40E0D0','#00C957']#,'#FF3030']
+        if pflag:
+            lw = 1.
+        else:
+            lw = 2.
+        levels = [0.05,0.5]#,0.75]
+        alpha=1.0
     else:
         tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
 
@@ -518,8 +530,9 @@ def main():
             # Set aspect ratio
         ax1.set_aspect('equal') 
             # Colorbar stuff
-        div = make_axes_locatable(ax1)
-        cax = div.append_axes('right', '5%', '5%')
+        if not grid:
+            div = make_axes_locatable(ax1)
+            cax = div.append_axes('right', '5%', '5%')
 
 
    
@@ -535,7 +548,7 @@ def main():
         im.set_rasterized(True) 
         if ctrace:
             if tarr[iani[0]] > params[0].thvcs:
-                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels,colors='white',alpha=1.0)
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=levels,colors=colors,linewidths=lw,alpha=alpha)
         cbar = fig.colorbar(im,label=clab,cax=cax) 
         
 
@@ -551,7 +564,7 @@ def main():
             im.set_rasterized(True) 
             if ctrace:
                 if tarr[ifrm] > params[0].thvcs:
-                    imc  = ax1.contour(x1cc,x2cc,imgc[ifrm],levels,colors='white',alpha=1.0)
+                    imc  = ax1.contour(x1cc,x2cc,imgc[ifrm],levels=levels,linewidths=lw,colors=colors,alpha=alpha)
             # Set labels for x,y
             ax1.set_xlabel(xlab)
             ax1.set_ylabel(ylab)
@@ -602,7 +615,7 @@ def main():
             im = ax.pcolorfast(x1cf,x2cf,imgs[iff],vmin=qmin,vmax=qmax) 
             if ctrace:
                 if tarr[iff] > params[0].thvcs:  
-                    imc  = ax.contour(x1cc,x2cc,imgc[iff],levels,colors='white',alpha=1.0)
+                    imc  = ax.contour(x1cc,x2cc,imgc[iff],levels=levels,colors=colors,alpha=alpha,linewidths=lw)
             ax.set_xlim(mnx,mxx)
             ax.set_ylim(mnx,mxx)
             #ax.set_aspect('equal')  
@@ -619,6 +632,13 @@ def main():
         cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
         cax.xaxis.set_ticks_position('bottom') 
         cb.ax.set_title(clab) 
+
+    elif grid:
+        imgs = np.zeros( imgs[0].shape ) 
+        im = ax1.pcolor(x1cf,x2cf, imgs, facecolor='none',edgecolor='k')
+
+
+        
    
     # Handle plotting a single frame 
     else: 
@@ -632,27 +652,27 @@ def main():
         im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
         if ctrace:
             if tarr[0] > params[0].thvcs:
-                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels,colors='white',alpha=1.0)
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=levels,colors=colors,alpha=alpha,linewidths=lw)
         # Same deal here 
         im.set_rasterized(True) 
         cbar = fig.colorbar(im,label=clab,cax=cax) 
     
         
     if save:
-        #mydir  = '/srv/analysis/jdupuy26/figures/'
-        mydir = os.getcwd()+'/'
+        mydir  = '/srv/analysis/jdupuy26/figures/'
+        #mydir = os.getcwd()+'/'
         # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
-        myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
-        #myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
+        #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
+        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
         if anim:
             print("[main]: Saving animation...")
-            ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',writer='imagemagick')
+            ani.save(mydir+myname+'_'+base+'_'+quant+'.mp4',fps=7.,writer='imagemagick')
         elif pflag:
             print('[main]: Saving panel plot...')
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps', format='eps',bbox_inches='tight')
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps', dpi=100, format='eps',bbox_inches='tight')
         else:
             print("[main]: Saving frame...")
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.eps', format='eps',bbox_inches='tight')
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.png', format='png',bbox_inches='tight')
     else:
         plt.show() 
     
