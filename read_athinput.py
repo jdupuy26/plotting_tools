@@ -44,6 +44,7 @@ import sys
                    Nang         : no. of angles for analysis 
                    thvcs        : start time of hvc accretion [Myr]
                    thvce        : end time of hvc accretion [Myr] 
+                   mhvc         : Mass of accretion [Myr]
                  }
         JLD edited: (9/3/17) 
                     get x1rat and omg from athinput 
@@ -86,11 +87,12 @@ def readath(fl):
             self.Nang=0
             self.thvcs=0
             self.thvce=0
+            self.mhvc=0
         def __repr__(self):
             return "<athparams level:%s nx1:%s nx2=%s nx3=%s x1min=%s x1max=%s ilog=%s x1rat=%s x2min=%s x2max=%s x3min=%s x3max=%s ngridx1=%s ngridx2=%s ngridx3=%s idisp=%s jdisp=%s kdisp=%s gamma=%s iso_csound=%s omg=%s \
-                     gam=%s mu=%s scaleh=%s Nang=%s thvcs=%s thvce=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.ilog,self.x1rat,self.x2min,self.x2max,
+                     gam=%s mu=%s scaleh=%s Nang=%s thvcs=%s thvce=%s mhvc=%s>" % (self.level, self.nx1,self.nx2,self.nx3,self.x1min,self.x1max,self.ilog,self.x1rat,self.x2min,self.x2max,
                                                                            self.x3min,self.x3max,self.ngridx1,self.ngridx2,self.ngridx3,self.idisp,self.jdisp,self.kdisp,
-                                                                           self.omg,self.gam,self.mu,self.scaleh,self.Nang,self.thvcs,self.thvce)
+                                                                           self.omg,self.gam,self.mu,self.scaleh,self.Nang,self.thvcs,self.thvce,self.mhvc)
 
 
     #Read in athinput file into array of lines
@@ -200,6 +202,8 @@ def readath(fl):
                     params[i-1].thvcs   = float(splitline[2])
                 if splitline[0] == 'thvce':
                     params[i-1].thvce   = float(splitline[2])
+                if splitline[0] == 'mhvc':
+                    params[i-1].mhvc    = float(splitline[2]) 
 
         check=0 
 
