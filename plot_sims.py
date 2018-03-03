@@ -14,6 +14,7 @@ from mpl_toolkits.axisartist.grid_finder import DictFormatter
 from matplotlib import _cntr as cntr 
 # scipy
 from scipy.interpolate import griddata 
+from scipy.interpolate import interp1d 
 import argparse
 from argparse import RawTextHelpFormatter
 import time as t
@@ -45,16 +46,16 @@ import read_athinput
 #           quantities. Designed to replace 
 #           plot_cylbgsbu.py eventually  
 #
-#  Keywords: python plot_lopside -h   
+#  Keywords: python plot_sims.py -h   
 #
-#  Usage: python plot_lopside.py quant   
+#  Usage: python plot_sims.py quant   
 #
 #  WARNING: THIS MUST BE RUN FROM SIMULATION DIRECTORY 
 #          
 #  Author: John Dupuy 
 #          UNC Chapel Hill
 #  Date:    02/15/18 
-#  Updated: 02/15/18 
+#  Updated: 03/01/18 
 #=====================================================
 
 
@@ -157,8 +158,6 @@ def get_athinput():
     base, params = read_athinput.readath(athin) 
     return base, params    
 
-
-
 #\func get_stitch
 # given pdict, this will stitch together an image
 # Here pdict is the dictionary from get_files()
@@ -224,6 +223,8 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False):
 
     # Note x1 is converted to kpc
     if ctrace:
+        aprc, appc = get_fc(False, True) 
+        c_arr[:] *= aprc               # get cloud mass  
         return tarr, x1/1.e3, x2, quant_arr, c_arr
     else:
         return tarr, x1/1.e3, x2, quant_arr
@@ -233,7 +234,7 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False):
 # \func get_fc()
 # given cell centered x1, x2, returns face centered grid 
 # THIS ASSUMES ilog=1 in x1-dir (i.e. uniform log spacing) 
-def get_fc(cart):
+def get_fc(cart, apc=False):
     base, params = get_athinput() 
    
     if cart:
@@ -249,8 +250,16 @@ def get_fc(cart):
         x2f  = np.linspace(       params[0].x2min,
                                   params[0].x2max, params[0].nx2+1) 
         x1f  = np.exp(lx1f) 
-        
-    return np.meshgrid(x1f, x2f, indexing='xy')   
+    if apc:      
+        # get area per cell 
+        x1c = 0.5*(x1f[1:] + x1f[0:-1])*1.e3
+        ar  =     (x1f[1:] - x1f[0:-1])*1.e3  # convert to pc 
+        ap  = x1c*(x2f[1:] - x2f[0:-1])
+
+        # Area per cell
+        return np.meshgrid(ar*ap, ar*ap, indexing='xy') 
+    else:
+        return np.meshgrid(x1f, x2f, indexing='xy')   
 
 # \func get_fc2()
 # gets fc2 values with nx1 cells, not correct, 
@@ -275,7 +284,28 @@ def get_fc2(cart):
         x1f  = np.exp(lx1f) 
     
     return np.meshgrid(x1f, x2f, indexing='xy') 
-   
+
+# \func get_levels() 
+# gets the levels for the contour tracing of the cloud
+# This returns levels that draw contours encompassing given
+# percentages of the cloud mass
+def get_levels(img,pcts):
+    # img : array of cloud mass 
+    # pcts: array of desired percentages (in descending order) 
+
+    # define 1D array of values inside img 
+    n    = 1000
+    t    = np.linspace(0, img.max(), n)  
+    # Compute integral within each t 
+    integral = (( img >= t[:, None, None]) * img).sum(axis=(1,2)) 
+    # Interpolate on the integral 
+    f        = interp1d(integral, t)
+    try: 
+        levels = list(f(pcts))
+    except ValueError: 
+        levels = [1.0]  
+        
+    return levels   
 
 #------------------------------------------------------#
 
@@ -383,6 +413,7 @@ def main():
     ctable = 'magma'
     plt.rcParams['image.cmap'] = ctable
     base, params = get_athinput() 
+    mc           = params[0].mhvc
 
 
     # Read in system arguments
@@ -431,6 +462,8 @@ def main():
                         default=False, help="Switch for cartesian simulations") 
     parser.add_argument("--grid", dest="grid",action='store_true',
                         default=False, help="Switch to make plot to show grid")
+    parser.add_argument("--fmt", dest="fmt", default='eps',
+                        type=str, help='format for saving graphics, default: eps') 
 
     
     # parsing arguments            
@@ -448,6 +481,7 @@ def main():
     levels   = args.levels
     cart     = args.cart
     grid     = args.grid
+    fmt      = args.fmt
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
     # Get panel flag
@@ -472,15 +506,15 @@ def main():
     # get data
     if ctrace:
         tarr, x1, x2, imgs, imgc = get_stitch(pdict,quant,myfrms,iunit,ctrace=ctrace)  
-        # Normalize imgc
-        imgc /= np.max(imgc) 
+        # Normalize imgc by hvc mass
+        imgc /= mc 
         # Set contour parameters for ctrace
         colors=['#40E0D0','#00C957']#,'#FF3030']
         if pflag:
             lw = 1.
         else:
             lw = 2.
-        levels = [0.05,0.5]#,0.75]
+        pcts = np.array([0.95,0.5])  # define percentages  
         alpha=1.0
     else:
         tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
@@ -548,7 +582,8 @@ def main():
         im.set_rasterized(True) 
         if ctrace:
             if tarr[iani[0]] > params[0].thvcs:
-                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=levels,colors=colors,linewidths=lw,alpha=alpha)
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=get_levels(imgc[0],pcts)
+                                                    ,colors=colors,linewidths=lw,alpha=alpha)
         cbar = fig.colorbar(im,label=clab,cax=cax) 
         
 
@@ -564,7 +599,8 @@ def main():
             im.set_rasterized(True) 
             if ctrace:
                 if tarr[ifrm] > params[0].thvcs:
-                    imc  = ax1.contour(x1cc,x2cc,imgc[ifrm],levels=levels,linewidths=lw,colors=colors,alpha=alpha)
+                    imc  = ax1.contour(x1cc,x2cc,imgc[ifrm],levels=get_levels(imgc[ifrm],pcts),
+                                                            linewidths=lw,colors=colors,alpha=alpha)
             # Set labels for x,y
             ax1.set_xlabel(xlab)
             ax1.set_ylabel(ylab)
@@ -575,7 +611,7 @@ def main():
             ax1.set_aspect('equal')
             # Set colorbar
             cbar = fig.colorbar(im,label=clab, cax=cax)
-            return 
+            return   
 
         ani = animation.FuncAnimation(fig, animate, range(len(myfrms)),
                                       repeat=False)
@@ -615,7 +651,8 @@ def main():
             im = ax.pcolorfast(x1cf,x2cf,imgs[iff],vmin=qmin,vmax=qmax) 
             if ctrace:
                 if tarr[iff] > params[0].thvcs:  
-                    imc  = ax.contour(x1cc,x2cc,imgc[iff],levels=levels,colors=colors,alpha=alpha,linewidths=lw)
+                    imc  = ax.contour(x1cc,x2cc,imgc[iff],levels=get_levels(imgc[iff],pcts)
+                                                         ,colors=colors,alpha=alpha,linewidths=lw)
             ax.set_xlim(mnx,mxx)
             ax.set_ylim(mnx,mxx)
             #ax.set_aspect('equal')  
@@ -652,7 +689,8 @@ def main():
         im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
         if ctrace:
             if tarr[0] > params[0].thvcs:
-                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=levels,colors=colors,alpha=alpha,linewidths=lw)
+                imc  = ax1.contour(x1cc,x2cc,imgc[0],levels=get_levels(imgc[0],pcts)
+                                                    ,colors=colors,alpha=alpha,linewidths=lw)
         # Same deal here 
         im.set_rasterized(True) 
         cbar = fig.colorbar(im,label=clab,cax=cax) 
@@ -666,13 +704,16 @@ def main():
         myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
         if anim:
             print("[main]: Saving animation...")
-            ani.save(mydir+myname+'_'+base+'_'+quant+'.mp4',fps=7.,writer='imagemagick')
+            ani.save(mydir+myname+'_'+base+'_'+quant+'.mp4',fps=7.,
+                     writer='imagemagick')
+
         elif pflag:
             print('[main]: Saving panel plot...')
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps', dpi=100, format='eps',bbox_inches='tight')
+
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.'+fmt, dpi=80, format=fmt,bbox_inches='tight',writer='imagemagick')
         else:
             print("[main]: Saving frame...")
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.png', format='png',bbox_inches='tight')
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.'+fmt, format=fmt,bbox_inches='tight')
     else:
         plt.show() 
     
