@@ -372,6 +372,8 @@ def main():
     parser.add_argument("--interp", dest="interp",action='store_true',
                         default=False,
                         help="Switch to do interpolation on <A1>")
+    parser.add_argument("--fmt", dest="fmt",type=str,default='eps',
+                        help="Type of figure to save, only applies to single frames, default: eps") 
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -387,6 +389,7 @@ def main():
     fit   = args.fit
     comp  = args.comp
     interp= args.interp
+    fmt   = args.fmt
 
     if   fit == 'exp':
         fit_func = exp_fit
@@ -488,7 +491,7 @@ def main():
         cut = 0.05 
 
         # Do plotting
-        fig = plt.figure(figsize=(7.,5.0),facecolor='white')
+        fig = plt.figure(figsize=(7.0,5.0),facecolor='white')
         plt.plot(tarr, data,'b-',marker='.')
         plt.plot(tarr, np.ones(len(data))*cut, 'r--') 
         plt.xlabel('t [Myr]')
@@ -714,7 +717,7 @@ def main():
         print("[main]: Program complete")
         mydir  = '/srv/analysis/jdupuy26/figures/'
         myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_')
-        plt.savefig(mydir+myname+'_'+base+'_'+quant+'.eps',format='eps',bbox_inches='tight')
+        plt.savefig(mydir+myname+'_'+base+'_'+quant+'.'+fmt,format=fmt,bbox_inches='tight')
     else:
         plt.show()
     #=============================================================
