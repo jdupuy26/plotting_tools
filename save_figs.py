@@ -77,10 +77,13 @@ def main():
                              "      animd: animation of density\n"
                              "     paneld: panel plot of density\n"
                              "         A1: average quantity of A1")
+    parser.add_argument('--fmt',type=str,default='eps',
+                        help="Type of figure to save, default: eps") 
     
     # parsing arguments
     args  = parser.parse_args()
     ptype = args.ptype
+    fmt   = args.fmt
 
     # Get plot file  
     if ptype == 'animd' or ptype == 'paneld':
@@ -88,10 +91,10 @@ def main():
         if ptype == 'animd':
             pcall = 'python plot_sims.py d --anim --save --ctrace --qminmax '
         else: 
-            pcall = 'python plot_sims.py d --ifrm 2 5 10 20 30 40 --save --ctrace --qminmax ' 
+            pcall = 'python plot_sims.py d --ifrm 2 5 10 20 30 40 --save --fmt '+ fmt +' --ctrace --qminmax ' 
     elif ptype == 'A1':
         pfile = 'plot_otf.py'
-        pcall = "python plot_otf.py '<A1>' --save" 
+        pcall = "python plot_otf.py '<A1>' --save --fmt " + fmt  
     else: 
         print('[main]: ptype %s not understood, exiting...\n' %(ptype) ) 
         quit() 
