@@ -6,6 +6,7 @@ import subprocess as sbp
 # matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from mpl_toolkits.mplot3d import Axes3D 
 # scipy
 from scipy.interpolate import UnivariateSpline as uspl
 import argparse
@@ -73,7 +74,7 @@ units = {"a":" [rad]","rc":" [pc]","fac":" [unitless]","r":" [pc]",
 
 #=================================
 # get_dirs() function
-def get_dirs(cwd, inr3000):
+def get_dirs(cwd, inr3000,inm1e8):
     # Purpose: get the directories of each simulation
     #          and store them in a list
     # input: 
@@ -88,6 +89,8 @@ def get_dirs(cwd, inr3000):
 
     # find mass directories 
     masses = os.walk('.').next()[1]
+    if not inm1e8:
+        masses.remove('m1e8') 
     # create empty dictionary of emtpy lists
         # for each mass  
     mdict  = {m: [] for m in masses}
@@ -99,13 +102,12 @@ def get_dirs(cwd, inr3000):
             if ('fac' in d) and ('id' not in d):
                 for m in masses:
                     if m in d:
-                        mdict[m].append(d+'/')
-
+                        mdict[m].append(d+'/') 
         else:
             if ('r3000' not in d) and ('fac' in d) and ('id' not in d):
                 for m in masses:
                     if m in d:
-                        mdict[m].append(d+'/') 
+                        mdict[m].append(d+'/')
     return mdict 
 
 #==================================
@@ -291,6 +293,44 @@ def get_groups(dirs, param, inr3000=False):
     params = select[param]
 
     return mygroups, [float(x) for x in params]  
+
+#==================================
+# get_groups3d() function
+def get_groups3d(dirs, inr3000=False):
+    # Given a unique param, returns a list of 
+    # groups that pertain to that param 
+
+    if inr3000: 
+        select = {'rc':['500'],'te':['325'],
+                  'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
+                  'a':['0.0','1.5708']}
+    else: 
+        select = {'rc':['500'],'te':['325','345'],
+                  'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
+                  'a':['0.0','1.5708']}
+    
+    mygroups = []  # dictionary sorted using   
+
+    afix = '0.0'
+
+    # sort simulations according to r, only for a=0.0 
+    for te in select['te']:
+        for rc in select['rc']:
+            for fac in select['fac']:
+                group = []
+                for r in select['r']:
+                    flag = 'te'+te+'/rc'+rc+'/r'+r+'/a'+afix+'/fac'+fac 
+                    for x in dirs:
+                       if flag in x:
+                           group.append(x)  
+                if group:
+                    mygroups.append(group) 
+
+    # Return the list of params as well
+    params = select['r']
+
+    return mygroups, [float(x) for x in params]  
+
 
 #==================================
 # get_sortdat() function
@@ -529,7 +569,7 @@ def main():
                         help="Quantity options:\n"
                              "   A1: Lopsidedness parameter for m=1\n"
                              "   A2: Lopsidedness parameter for m=2")
-    parser.add_argument("--stat", dest="stat",type=str, default='MSE',
+    parser.add_argument("--stat", dest="stat",type=str, default='ts_cut',
                         required=False,
                         help="Statistics to carry out on data\n"
                              "  MSE: Mean square error b/w sim and control\n"
@@ -556,6 +596,12 @@ def main():
     parser.add_argument("--inr3000", dest='inr3000',action='store_true',
                         default=False,
                         help="Switch to include r3000 sims, default is False.")
+    parser.add_argument("--inm1e8", dest='inm1e8',action='store_true',
+                        default=False, 
+                        help='Switch to include m1e8 sims, default is False')
+    parser.add_argument("--3d", dest="threed", action='store_true',
+                        default=False, 
+                        help='Switch to make 3d plots showing parameter effects') 
 
     # parsing arguments
     args = parser.parse_args()
@@ -568,12 +614,15 @@ def main():
     ifrm     = args.ifrm
     iani     = args.iani
     anim     = args.anim
+    inm1e8   = args.inm1e8 
+    threed   = args.threed 
     
     # First find the directories of the simulations
-    mdict = get_dirs(os.getcwd(),inr3000)   # dictionary of {mass: mdsim}
+    mdict = get_dirs(os.getcwd(),inr3000,inm1e8)   # dictionary of {mass: mdsim}
     mlist = sorted(os.walk('.').next()[1])  # list of mass directory names
     mlist = [m for m in mlist if 'restart' not in m] # if restart is in this directory 
-
+    if not inm1e8:
+        mlist.remove('m1e8') 
     
     # Set the processor and unique flag
     proc = 'id0'
@@ -632,7 +681,12 @@ def main():
 
 
     # plotting section 
-    fig = plt.figure(facecolor='white',figsize=(10.,5.))
+    if threed: 
+        fig = plt.figure(facecolor='white',figsize=(10.,5.))
+        #ax  = fig.add_subplot(111, projection='3d') 
+        ax  = Axes3D(fig) 
+    else:
+        fig = plt.figure(facecolor='white',figsize=(10.,5.))
     if stat == 'cmf': 
         #   set parameters for the avals 
         amin  = 0.8*np.min(dats[ 0])
@@ -718,43 +772,82 @@ def main():
             plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.)
         
         else: 
+            # Handle 3D plots 
+            if threed: 
+                groups = [] 
+                for mdt in m_dirs_trim:
+                    group, paramr = get_groups3d(mdt, inr3000)
+                    groups.append(group)
 
-            # sort the data based on param
-            groups = []
-            for mdt in m_dirs_trim:
-                group, params = get_groups(mdt, param, inr3000)
-                groups.append(group)
-                plt.ylim(-10,600) 
-            
-            for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
-                i = 0 # easy way to handle legends  
-                for g in mgroup:
-                    if 'ts' in stat:
-                        vals = [md[d][1] for d in g]
-                    if len(vals) == len(params):
-                        if i == 0:
-                            plt.plot(params,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                    i = 0 # easy way to handle legends  
+                    for g in mgroup:
+                        if 'ts' in stat:
+                            vals = [md[d][1] for d in g]
+                        
+                        # Get correct value of paramf 
+                        if 'fac-1.0' in g[0]:
+                            paramf = -1.0
+                        elif 'fac0.0' in g[0]:
+                            paramf = 0.0
                         else:
-                            plt.plot(params,vals,c+m+l,alpha=1.0,linewidth=2.5)
+                            paramf = 1.0 
+                        paramf *= np.ones(len(paramr)) 
+
+                        if i == 0:
+                            ax.plot(paramr,paramf,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                        else:
+                            ax.plot(paramr,paramf,vals,c+m+l,alpha=1.0,linewidth=2.5)
                         i += 1
+                # Make plot labels 
+                ax.set_xlabel('\n'+sym['r']+' '+units['r'],linespacing=2.2)
+                ax.set_ylabel('\n'+sym['fac']+' '+units['fac'],linespacing=2.2)
+                ax.zaxis.set_rotate_label(False) 
+                ax.set_zlabel('$\\tau$ [Myr]', rotation=90.) 
+                # Change default view 
+                ax.view_init(elev=30., azim=225.) 
+                # set axes limits 
+                ax.set_xlim(800.,3200.)
+                ax.set_ylim(-1.2,1.2) 
+                ax.set_zlim(-10,600.)
+                ax.legend() 
+
+            else: 
+                # sort the data based on param
+                groups = []
+                for mdt in m_dirs_trim:
+                    group, params = get_groups(mdt, param, inr3000)
+                    groups.append(group)
+                    plt.ylim(-10,600) 
+                
+                for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                    i = 0 # easy way to handle legends  
+                    for g in mgroup:
+                        if 'ts' in stat:
+                            vals = [md[d][1] for d in g]
+                        if len(vals) == len(params):
+                            if i == 0:
+                                plt.plot(params,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                            else:
+                                plt.plot(params,vals,c+m+l,alpha=1.0,linewidth=2.5)
+                            i += 1
 
 
 
-            plt.xlabel(sym[param]+' '+units[param])
-            plt.ylabel('$\\tau$ [Myr]' )
-            plt.ylim(-10,600) 
-            if min(params) < 0:
-                plt.xlim(1.1*min(params), 1.1*max(params))
-            else:
-                plt.xlim(0.9*min(params), 1.1*max(params)) 
-            plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.) 
+                plt.xlabel(sym[param]+' '+units[param])
+                plt.ylabel('$\\tau$ [Myr]' )
+                plt.ylim(-10,600) 
+                dx = 0.25*(max(params) - min(params))/( float(len(params)) )  
+                plt.xlim(min(params)-dx, max(params)+dx)
+                plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.) 
     
     
     if save:
         if anim:
             ani.save(quant+stat+param+'.mp4')
         else:
-            plt.savefig(quant+stat+param+'.eps') 
+            plt.savefig(quant+'_'+stat+'_'+param+'.eps')
+            plt.savefig(quant+'_'+stat+'_'+param+'.png') 
     else:
         plt.show() 
     
