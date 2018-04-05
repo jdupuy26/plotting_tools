@@ -247,6 +247,10 @@ def read_otf(fl,precision, **kwargs):
 # Read binary file 
 def read_lv(fl,precision, **kwargs):
     
+    ipos = 1
+    for key in kwargs:
+        if key == 'ipos':
+            ipos = kwargs[key] 
     try: 
         file = open(fl,'rb')
     except:
@@ -264,36 +268,41 @@ def read_lv(fl,precision, **kwargs):
     file.seek(0,2)
     eof = file.tell()
     file.seek(0,0)
+   
+    # if ipos = 1, this will terminate after reading 
+    #       the first (l,v) diagram 
+    # if ipos = 2, then this loop runs twice and 
+    #       the function will return the second (l,v) diagram  
+    for i in range(ipos): 
+        # Read integ
+        integ = np.fromfile(file,dtype=np.uint32,count=3)
+        nlong, nvbins, ntracer = integ[0], integ[1], integ[2]
 
-    # Read integ
-    integ = np.fromfile(file,dtype=np.uint32,count=3)
-    nlong, nvbins, ntracer = integ[0], integ[1], integ[2]
+        # Read dat
+        dat = np.fromfile(file,dtype=prec,count=5)
+        # Parse dat
+        t        = dat[0]   # [Myr]
+        minvlos  = dat[1]   
+        maxvlos  = dat[2]   
+        minl     = dat[3]*180./np.pi   
+        maxl     = dat[4]*180./np.pi
 
-    # Read dat
-    dat = np.fromfile(file,dtype=prec,count=5)
-    # Parse dat
-    t        = dat[0]   # [Myr]
-    minvlos  = dat[1]   
-    maxvlos  = dat[2]   
-    minl     = dat[3]*180./np.pi   
-    maxl     = dat[4]*180./np.pi
+           
+        # Read lv diagram
+        lv    = np.zeros((ntracer,nlong,nvbins))
+        for it in range(ntracer):
+            for i in range(nlong):
+                lv[it][i]   = np.fromfile(file,dtype=prec,count=nvbins)
+        
+        # construct velocity, longitude array
+        lvals = np.linspace(minl   ,maxl   ,nlong )
+        # Handle case where no gas has T < 1e4
+        if abs(minvlos) > 1e28:
+            minvlos = -300
+            maxvlos =  300
+            nvbins  = 2
 
-       
-    # Read lv diagram
-    lv = np.zeros((ntracer,nlong,nvbins))
-    for it in range(ntracer):
-        for i in range(nlong):
-            lv[it][i]   = np.fromfile(file,dtype=prec,count=nvbins)
-    
-    # construct velocity, longitude array
-    lvals = np.linspace(minl   ,maxl   ,nlong )
-    # Handle case where no gas has T < 1e4
-    if abs(minvlos) > 1e28:
-        minvlos = -300
-        maxvlos =  300
-        nvbins  = 2
-
-    vvals = np.linspace(minvlos,maxvlos,nvbins)
+        vvals = np.linspace(minvlos,maxvlos,nvbins)
     
     file.close()
 

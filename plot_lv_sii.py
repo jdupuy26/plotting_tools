@@ -228,7 +228,7 @@ def main():
                         default=[0,0],type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
     parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
-                        default=[-2,2],type=float,
+                        default=[-5,5],type=float,
                         help="Min/max value for imshow")
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=0,
                         help="Frame of simulation to plot:\n"
@@ -260,8 +260,14 @@ def main():
                              "2: Line ratio \n")
     parser.add_argument("--old", dest="old",action='store_true',
                         default=False, help="Switch if plotting old sii files, containing only 6717 emission\n")
-    parser.add_argument("--cloudtrace",dest="cloudtrace",action='store_true',
+    parser.add_argument("--ctrace",dest="ctrace",action='store_true',
                         default=False, help="Switch to overplot a contour for the cloud (l,v) emission\n")
+    parser.add_argument("--vmnmx", dest="vmnmx",nargs=2,required=False,default=[-300,300],type=float,
+                        help="For (l,v) diagrams, set the plotting range")
+    parser.add_argument("--ipos", dest="ipos",type=int,default=1,required=False,
+                        help="Observer position flag for (l,v) diagrams.\n"
+                             "1: Position in disk @ Rsun\n"
+                             "2: Position is from Andromeda\n")
 
     # parsing arguments            
     args  = parser.parse_args()
@@ -276,7 +282,9 @@ def main():
     smooth= args.smooth
     iline = args.iline
     old   = args.old
-    cloudtrace=args.cloudtrace
+    ctrace=args.ctrace
+    vmnmx = args.vmnmx
+    ipos  = args.ipos
 
     # Get lv files 
     if quant == 'lv' or quant == 'lvc':
@@ -284,7 +292,7 @@ def main():
     elif quant == 'sii':
         files = get_files(athdir,'id0','*.'+quant+'.*')
         # Change default range for sii files
-        if (qmin,qmax) == (-2,2):
+        if (qmin,qmax) == (-5,5):
             (qmin,qmax) = (-15,-5)
     else: 
         print('[main]: quant not understood, aborting...\n')
@@ -313,9 +321,9 @@ def main():
         quit()
     
     # Get the data
-    tarr, x, y, data = init(quant,files,prec=prec,iline=iline,old=old)
-    if cloudtrace: 
-        tarr, x, y, cloud = init('lvc',files,prec=prec,iline=iline,old=old)
+    tarr, x, y, data = init(quant,files,prec=prec,iline=iline,old=old,ipos=ipos)
+    if ctrace: 
+        tarr, x, y, cloud = init('lvc',files,prec=prec,iline=iline,old=old,ipos=ipos)
         # Set global values for stuff
         nlevels = 20 
         alpha   = 0.3
@@ -337,22 +345,25 @@ def main():
               " interpolate\n" %( interp ) )
     # Open figure
     fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
-    ax1 = fig.add_subplot(111)
+    ax1 = fig.add_subplot(111, axisbg='black')
     
     # Handle animation
     if anim:
         # Get spacing
         dx = x[1] - x[0]
-        dy = y[iani[0]][1] - y[iani[1]][0]
+        dy = y[iani[0]][1] - y[iani[0]][0]
         #  get extent
         mnx = x[ 0] - 0.5*dx
         mxx = x[-1] + 0.5*dx
         mny = y[iani[0]][ 0] - 0.5*dy
-        mxy = y[iani[1]][-1] + 0.5*dy
+        mxy = y[iani[0]][-1] + 0.5*dy
         
         # set mny, mxy for whole animation
-        mny0 = 0.9*mny 
-        mxy0 = 0.9*mxy
+        if quant == 'lv' or quant == 'lvc':
+            mny0 = vmnmx[0] 
+            mxy0 = vmnmx[1]
+            # Also set the background color
+            #ax1.set_facecolor('black') 
       
         if smooth:
             data[iani[0]] = get_smooth(data[iani[0]],dx,smooth)
@@ -365,7 +376,7 @@ def main():
                         vmin = qmin, vmax = qmax,
                         interpolation = interp)
 
-        if cloudtrace:
+        if ctrace:
             m = np.amax(cloud[iani[0]])
             if m != 0:
                 levels = np.linspace(0,m,nlevels) + step
@@ -373,8 +384,8 @@ def main():
                              colors=color,origin='lower',alpha=alpha)
         
         ax1.set_xlim(mnx,mxx)
-        #if quant == 'lv':
-        #    ax1.set_ylim(mny0,mxy0)
+        if quant == 'lv':
+            ax1.set_ylim(mny0,mxy0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
         ax1.set_title('t = %1.1f [Myr]' % tarr[iani[0]]) 
@@ -389,12 +400,14 @@ def main():
         def animate(ifrm):
             # Clear the axes
             ax1.cla()
-            # update mny, mxy
+            # update title
+            ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+            
+            # Update extent 
             dy  = y[ifrm][1 ] - y[ifrm][0]
             mny = y[ifrm][ 0] - 0.5*dy
             mxy = y[ifrm][-1] + 0.5*dy
-            # update title
-            ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm])
+
             if ifrm != iani[0]:
                 if smooth:
                     data[ifrm] = get_smooth(data[ifrm],dx,smooth)
@@ -406,7 +419,7 @@ def main():
                         vmin = qmin, vmax = qmax, 
                         interpolation=interp)
 
-            if cloudtrace:
+            if ctrace:
                 m = np.amax(cloud[ifrm])
                 if m != 0:
                     levels = np.linspace(0,m,nlevels) + step
@@ -439,6 +452,10 @@ def main():
         mxx = x[-1] + 0.5*dx
         mny = y[ifrm][ 0] - 0.5*dy
         mxy = y[ifrm][-1] + 0.5*dy
+
+        if quant == 'lv' or quant == 'lvc':
+            mny0 = vmnmx[0]
+            mxy0 = vmnmx[1]
         
         if smooth:
             data[ifrm] = get_smooth(data[ifrm],dx,smooth)
@@ -449,14 +466,14 @@ def main():
                         origin='lower',aspect=asp,
                         vmin = qmin,vmax = qmax,
                         interpolation = interp)
-        if cloudtrace:
+        if ctrace:
             m = np.amax(cloud[ifrm])
             if m != 0:
                 levels = np.linspace(0.0,m,nlevels) + step
                 ax1.contourf(cloud[ifrm],levels,extent=[mnx,mxx,mny,mxy],
                              colors=color,origin='lower',alpha=alpha) 
         ax1.set_xlim(mnx,mxx)
-        ax1.set_ylim(mny,mxy)
+        ax1.set_ylim(mny0,mxy0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
         ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm]) 

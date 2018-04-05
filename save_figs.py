@@ -54,7 +54,7 @@ def get_dirs(cwd):
     print('\n[get_dirs]: Finding simulation directories...')
     # Loop through stdout and get sims
     for d in stdout.splitlines():
-        if ('fac' in d) and ('id' not in d):
+        if ('fac' in d) and ('id' not in d) and ('a1.5708' not in d):
             for m in masses:
                 if m in d:
                     dirlist.append(d+'/')

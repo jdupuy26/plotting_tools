@@ -137,7 +137,7 @@ def get_ylabel(quant):
 
 #================================
 # get_title() function
-def get_title(quant,comp):
+def get_title(quant,comp='None'):
     lab = {'A1':{'None':'A1 [unitless]',
                  'sub' :'$|$A1 - A1$_{control}$$|$ [unitless]',
                  'div' :'A1/A1$_{control}$ [unitless]'},
@@ -276,21 +276,21 @@ def init(quant, files, **kwargs):
         elif quant == 'A2':
             data = [r, A2]    
         elif quant == '<A1>':
-            # Get r values of peaks in bar zone
-            rbar_peaks  = r[np.argmax(A1[:,(0 < r) & ( r < 1200)],axis=1)]
-            # Get r values of peaks in disc zone
-            rdisc_peaks = r[np.argmax(A1[:,(rmn < r) & (r < rmx)],axis=1) + 197]
-
-            diff = rdisc_peaks - rbar_peaks
+            # First sample the data on a uniform mesh so as to give a equally weighted average 
+            A1 = interp1d(r,A1) 
+            r  = np.linspace(np.min(r), np.max(r), 1000.) # 1000 points
+            # get A1 on the uniform mesh 
+            A1 = A1(r)  
             # Average 
-            avg = np.mean(A1[:, (rmn<r) & (r < rmx)],axis=1)
-            try:
-                mxi = int(tarr[ diff > np.max(diff)/4.][0] - 250.)
-            except IndexError:
-                mxi = np.argmax(avg)  
+            data = np.mean(A1[:, (rmn<r) & (r < rmx)],axis=1)
 
-            data = (avg, mxi)
         elif quant == '<A2>':
+            # First sample the data on a uniform mesh so as to give a equally weighted average 
+            A2 = interp1d(r,A2) 
+            r  = np.linspace(np.min(r), np.max(r), 1000.) # 1000 points
+            # get A1 on the uniform mesh 
+            A2 = A2(r)  
+            
             data = np.mean(A2[:,(rmn < r) & (r < rmx)],axis=1)
     
     return tarr, data
@@ -364,11 +364,16 @@ def main():
     parser.add_argument("--fit", dest="fit",type=str,
                         default='None',
                         help="Switch to do fit for <A1> perturbations")
-    parser.add_argument("--comp", dest="comp",type=str,
+    parser.add_argument("--ctrl", dest="ctrl",type=str,
                         default='None',
                         help="String to compare measurement to control files:\n"
                              "  sub: Subtract control from sim and take abs value\n"
                              "  div: Divide sim by control")
+    parser.add_argument("--comp", dest="comp",action='store_true',
+                        default=False, required=False,
+                        help="Comparison plot, currently need to specify whole path"
+                             "for the comparison of interest.\n"
+                             " ONLY FOR 1D PLOTS!\n")
     parser.add_argument("--interp", dest="interp",action='store_true',
                         default=False,
                         help="Switch to do interpolation on <A1>")
@@ -418,18 +423,14 @@ def main():
         quit()
 
     # Get the data
-    if quant == '<A1>':
-        tarr, (data, mxi) = init(quant, otf_files, prec=32,
-                               nx1_dom=nx1_dom, Nang=Nang, rmnmx = rmnmx)
-    else:
-        tarr, data = init(quant, otf_files, prec=32, 
-                          nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
+    tarr, data = init(quant, otf_files, prec=32, 
+                      nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
     
     print("       thvcs = %1.3e [Myr]\n"
           "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
 
     # Check if comparing to control simulation
-    if comp != 'None':
+    if comp:
         ctrl_path  = "/srv/analysis/jdupuy26/longevity_study/"+\
                      "m0.0/te265/rc400/r1100/a0.0/fac1.0/"
         ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
@@ -453,10 +454,10 @@ def main():
         print("\n[main]: MSE between control and sim: %1.3e \n" % (mse) ) 
  
         # Decide what to do with the control data
-        if comp == 'sub':
+        if ctrl == 'sub':
             data[1] -= dcon[1]
             data[1]  = abs(data[1])
-        elif comp == 'div':
+        elif ctrl == 'div':
             data[1] /= dcon[1]
         else:
             print('[main]: Comparison %s not recognized, exiting!' %(comp))
@@ -492,10 +493,11 @@ def main():
 
         # Do plotting
         fig = plt.figure(figsize=(7.0,5.0),facecolor='white')
+        plt.plot(tarr, np.ones(len(data))*cut, 'r--', lw=3.) 
         plt.plot(tarr, data,'b-',marker='.')
-        plt.plot(tarr, np.ones(len(data))*cut, 'r--') 
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
+        plt.ylim(0.0, 0.15)
 
         # Get time above cutoff <A1> 
         try:
@@ -653,9 +655,9 @@ def main():
         # unpack data
         r, A = data[0], data[1] 
 
-                # handle plotting a colormap
+        # handle plotting a colormap
         if (cmap) or (wire):
-                        # 'Cell centered' time 
+            # 'Cell centered' time 
             dt = tarr[1] - tarr[0]
             tc = np.linspace(tarr[0]-0.5*dt, tarr[-1]+0.5*dt,len(tarr)) 
             # 'Cell centered' radii
@@ -665,15 +667,21 @@ def main():
 
             # Create the meshgrid
             R, T = np.meshgrid(rc,tc)
-            
+
+            if comp:
+                cstr = 'sub'
+            else:
+                cstr = 'None'
+        
             if cmap:
                 # Make the colormap
-                im = ax.pcolormesh(R,T,A,cmap='magma')
-                cbar = plt.colorbar(im,pad=0.1,label=get_title(quant,comp)) 
+                im = ax.pcolormesh(R,T,A,cmap='magma',vmin=0.0,vmax=0.05)
+
+                cbar = plt.colorbar(im,pad=0.1,label=get_title(quant,cstr)) 
             else: 
                 ax  = fig.add_subplot(111,projection='3d')
                 surf = ax.plot_surface(R,T,A,rstride=3,cstride=3,cmap='rainbow',shade=False)
-                ax.set_zlabel(get_title(quant,comp))
+                ax.set_zlabel(get_title(quant,cstr))
             
             
             ax.set_ylabel('t [Myr]')
@@ -682,6 +690,10 @@ def main():
             ax.set_ylim(tc[0],tc[-1])
 
         else:
+            A = interp1d(r,A)
+            r = np.linspace(r.min(),r.max(), 1000.)
+            A = A(r) 
+            
             ax.set_xlabel(xstr) 
             ax.set_ylabel(ystr)
             
@@ -689,7 +701,7 @@ def main():
             if ifrm is not None:
                 t = tarr[ifrm]
                 ax.set_title('t = %1.1f [Myr]' % tarr[ifrm])
-                ax.plot(r, A[ifrm])
+                ax.plot(r, A[ifrm],'.')
                 #if save:
                 #    print("[main]: Saving figure")
                 #    plt.savefig(quant+str(ifrm)+'_'+str(iang)+".eps")

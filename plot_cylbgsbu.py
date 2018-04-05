@@ -797,6 +797,7 @@ def lv_proj_los(d, vr, vp, T, x, y, iner_frame=None, cart_grid=None):
             Vlos -= V0*np.sin(L)
         else: 
             Vlos += V0*np.sin(L)
+    print(Vlos)
 # Part 4: Interpolate arrays
     #d_interp    = interp2d(y,x,d   , kind='cubic', bounds_error=False,fill_value=0)
     #V_losinterp = interp2d(y,x,Vlos, kind='cubic', bounds_error=False,fill_value=0)
@@ -1493,6 +1494,9 @@ for imnum in range(top+1):
                     # Get shape and extent of image
                     print np.shape(img)
                     myext = [L.min(),L.max(),Vlos.min(),Vlos.max()]
+                    # HERE 
+                    myext = [-5000,5000,-5000,5000]
+                    img = Vlos
                     
                     # Take log of image 
                     if args.log:

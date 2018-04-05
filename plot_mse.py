@@ -3,12 +3,15 @@ import numpy as np
 import sys
 import os
 import subprocess as sbp
+import re
 # matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D 
 # scipy
 from scipy.interpolate import UnivariateSpline as uspl
+from scipy.interpolate import interp1d 
 import argparse
 from argparse import RawTextHelpFormatter
 import time as t
@@ -61,6 +64,7 @@ sym = {"m1e6":"M$_c$=10$^6$ M$_{\odot}$", "m1e5": "M$_c$=10$^5$ M$_{\odot}$",
        "m5e7":"M$_c$=5 $\\times$ 10$^7$ M$_{\odot}$",
        "m1e8":"M$_c$=10$^8$ M$_{\odot}$",  
        "m0"  :"M$_c$=0 M$_{\odot}$",
+       "all" :"All masses", 
        "a":"$\phi_{c,0}$", "fac":"f$_{c}$", "te":"t$_e$",
        "r":"r$_{pos,0}$", "rc":"r$_c$", "f":"$f$", "A1":"<A1>",
        "A2":"<A2>", "RoL": "M$_{cr,R}$/M$_{cr,L}$", "LoR":"M$_{cr,L}$/M$_{cr,R}$"} 
@@ -74,23 +78,19 @@ units = {"a":" [rad]","rc":" [pc]","fac":" [unitless]","r":" [pc]",
 
 #=================================
 # get_dirs() function
-def get_dirs(cwd, inr3000,inm1e8):
+def get_dirs(masses, inr3000):
     # Purpose: get the directories of each simulation
     #          and store them in a list
     # input: 
-    #         cwd: current working directory
+    #         masses: mlist 
     # output: 
     #         a list of strings that contain
     #         all the directories of simulations
     
     # Use the find function to get directory structure
-    process = sbp.Popen(["find",cwd,"-type","d"], stdout=sbp.PIPE)
+    process = sbp.Popen(["find",os.getcwd(),"-type","d"], stdout=sbp.PIPE)
     stdout, stderr = process.communicate()
 
-    # find mass directories 
-    masses = os.walk('.').next()[1]
-    if not inm1e8:
-        masses.remove('m1e8') 
     # create empty dictionary of emtpy lists
         # for each mass  
     mdict  = {m: [] for m in masses}
@@ -296,35 +296,32 @@ def get_groups(dirs, param, inr3000=False):
 
 #==================================
 # get_groups3d() function
-def get_groups3d(dirs, inr3000=False):
+def get_groups3d(dirs, inr3000=False, afix='0.0', rcfix='200'):
     # Given a unique param, returns a list of 
     # groups that pertain to that param 
 
     if inr3000: 
-        select = {'rc':['500'],'te':['325'],
+        select = {'rc':['200','500','1000'],'te':['325'],
                   'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
                   'a':['0.0','1.5708']}
     else: 
-        select = {'rc':['500'],'te':['325','345'],
+        select = {'rc':['200','500','1000'],'te':['325','345'],
                   'r':['1000','2000','3000'],'fac':['-1.0','0.0','1.0'],
                   'a':['0.0','1.5708']}
     
-    mygroups = []  # dictionary sorted using   
-
-    afix = '0.0'
+    mygroups = []     
 
     # sort simulations according to r, only for a=0.0 
     for te in select['te']:
-        for rc in select['rc']:
-            for fac in select['fac']:
-                group = []
-                for r in select['r']:
-                    flag = 'te'+te+'/rc'+rc+'/r'+r+'/a'+afix+'/fac'+fac 
-                    for x in dirs:
-                       if flag in x:
-                           group.append(x)  
-                if group:
-                    mygroups.append(group) 
+        for fac in select['fac']:
+            group = []
+            for r in select['r']:
+                flag = 'te'+te+'/rc'+rcfix+'/r'+r+'/a'+afix+'/fac'+fac 
+                for x in dirs:
+                   if flag in x:
+                       group.append(x)  
+            if group:
+                mygroups.append(group) 
 
     # Return the list of params as well
     params = select['r']
@@ -481,12 +478,18 @@ def get_stats(files, quant, stat, **kwargs):
         elif stat == 'ts_cut':
             # time scale measured by time above cutoff
             cut = 0.05
+            # first sample data on uniform mesh
+            tdats = interp1d(r, tdats)
+            r     = np.linspace(np.min(r),np.max(r),1000.) # 1000 points
+            tdats = tdats(r)  # sample on uniform mesh 
+            
             avg = np.mean(tdats[:, (rmn < r) & (r < rmx)], axis=1) 
             mx  = np.max(avg) 
             try:
                 ts_cut = tarr[avg > cut][-1] - tarr[avg > cut][0]
             except IndexError:
-                ts_cut = 0
+                ts_cut = 0.0
+
             mydata.append( (mx, ts_cut) ) 
 
         elif stat == 'ts_half':
@@ -557,6 +560,8 @@ def get_stats(files, quant, stat, **kwargs):
             print('[get_stats]: stat not understood, exiting...')
             quit() 
 
+
+
     return tarr, mydata
 
 # main() function 
@@ -599,9 +604,21 @@ def main():
     parser.add_argument("--inm1e8", dest='inm1e8',action='store_true',
                         default=False, 
                         help='Switch to include m1e8 sims, default is False')
+    parser.add_argument("--exm5e7", dest='exm5e7',action='store_true',
+                        default=False,
+                        help='Switch to exclude m5e7 sims, default is False') 
     parser.add_argument("--3d", dest="threed", action='store_true',
                         default=False, 
                         help='Switch to make 3d plots showing parameter effects') 
+    parser.add_argument("--panel", dest="panel", action='store_true',
+                        default=False,
+                        help='Switch to make analogous panel plots like the 3d plots')
+    parser.add_argument("--pct", dest="pct",type=float, 
+                        default=None,
+                        help='Compute percentages of simulations above a certain timescale in [Myr]') 
+    parser.add_argument("--pctplot",dest="pctplot",action='store_true',
+                        default=False,
+                        help='Switch to make a percentage plot')
 
     # parsing arguments
     args = parser.parse_args()
@@ -615,15 +632,30 @@ def main():
     iani     = args.iani
     anim     = args.anim
     inm1e8   = args.inm1e8 
+    exm5e7   = args.exm5e7
     threed   = args.threed 
+    panel    = args.panel
+    tspct    = args.pct
+    pctplot  = args.pctplot
+
+    pctflag  = True if tspct != None else False 
+
+    # Find directories of masses 
+    mlist = os.walk('.').next()[1]  # list of mass directory names
+    # Remove restart directory
+    mlist = [m for m in mlist if 'restart' not in m] # if restart is in this directory 
+    # Sort based on mass 
+    mlist.sort(key=lambda x: float(x[1:]))
+    if 'm1e8' in mlist:
+        if not inm1e8:
+            mlist.remove('m1e8')
+    if 'm5e7' in mlist:
+        if exm5e7:
+            mlist.remove('m5e7') 
     
     # First find the directories of the simulations
-    mdict = get_dirs(os.getcwd(),inr3000,inm1e8)   # dictionary of {mass: mdsim}
-    mlist = sorted(os.walk('.').next()[1])  # list of mass directory names
-    mlist = [m for m in mlist if 'restart' not in m] # if restart is in this directory 
-    if not inm1e8:
-        mlist.remove('m1e8') 
-    
+    mdict = get_dirs(mlist,inr3000)   # dictionary of {mass: mdsim}
+     
     # Set the processor and unique flag
     proc = 'id0'
     flag = 'otf'
@@ -674,180 +706,328 @@ def main():
 
     # Stuff for plotting 
     lines  = ['-','--','-.',':']
-    colors = ['r','g','b','m','k','c','r']  # colors for each mass 
+    mycmap = mpl.cm.get_cmap('inferno')
+    if pctplot:
+        colors = [ mycmap(x) for x in np.linspace(0.0,0.95,len(mlist)+1)]
+    else:
+        colors = [ mycmap(x) for x in np.linspace(0.0,0.95,len(mlist))]
+    #colors = ['r','g','b','m','k','c','r']  # colors for each mass 
     markrs = ['s','p','^','o','*','d','<']
     masses = mlist 
+    
+    # Print out total number of simulations
+    if pctflag: 
+        tot   = 0
+        i     = 0 
+        nsims = np.zeros(len(mlist)) 
+        for m,md in zip(mlist,m_dirs_trim):
+            no = float(len(md))
+            print("[main]: For %s, no of sims: %1.0f" %( m, no )) 
+            tot += no
+            nsims[i] = no
+            i += 1
+        print("[main]: Total no of sims: %1.0f" %(tot) ) 
 
+        # Loop through all simulations
+        i = 0
+        tot = [] 
+        for m,md in zip(mlist,dats):
+            ds = np.zeros(len(md)) 
+            for j in range(len(md)):
+                ds[j] = md[j][1]
+            pct = (float(len(ds[ds > tspct]))/nsims[i])*100. 
+            print("[main]: For %s, percentage of sims with ts > 0: %1.1f" %(m, pct) )  
+            tot.append(ds)
+            i += 1 
 
+        tot = np.concatenate(tot,axis=0) 
+        print("[main]:     Total percentage of sims with ts > 0: %1.1f" 
+                       %( 100.*float(len(tot[tot > tspct]))/float(len(tot))) )
+    if pctplot: 
+        tot   = 0
+        i     = 0 
+        frac  = np.linspace(0.,600.,15)
 
-    # plotting section 
-    if threed: 
-        fig = plt.figure(facecolor='white',figsize=(10.,5.))
-        #ax  = fig.add_subplot(111, projection='3d') 
-        ax  = Axes3D(fig) 
+        nsims = np.zeros(len(mlist)) 
+        for m,md in zip(mlist,m_dirs_trim):
+            no = float(len(md))
+            print("[main]: For %s, no of sims: %1.0f" %( m, no )) 
+            tot += no
+            nsims[i] = no
+            i += 1
+        print("[main]: Total no of sims: %1.0f" %(tot) ) 
+
+        # Loop through all simulations
+        i = 0
+        tot  = [] 
+        # Create array for each percent 
+        pcts = np.zeros( (len(mlist)+1, len(frac)) ) 
+        for m,md in zip(mlist,dats):
+            ds = np.zeros(len(md)) 
+            for j in range(len(md)):
+                ds[j] = md[j][1]
+            for k in range(len(frac)):
+                pct = (float(len(ds[ds > frac[k]]))/nsims[i]) 
+                pcts[i,k] = pct 
+            tot.append(ds)
+            i += 1 
+
+        tot = np.concatenate(tot,axis=0) 
+        # Get percentages for total 
+        for k in range(len(frac)):
+            pct = (float(len(tot[tot > frac[k]]))/float(len(tot))) 
+            pcts[-1,k] = pct
+
+        masses = ['m1e6','m5e6','m1e7','m5e7','all'] 
+
+        plt.figure(facecolor='white',figsize=(10.,5.))
+        # loop over masses in plot
+        i = 0 
+        for c,mstr,m in zip(colors,masses,markrs):
+            plt.plot(frac, pcts[i], color=c, label=sym[mstr], marker=m,
+                                    markersize=13.)
+            i+=1
+        plt.xlabel('Timescale [Myr]')
+        plt.ylabel('Fraction above timescale')
+        plt.ylim(-0.1,1.1)
+        plt.legend() 
+
     else:
-        fig = plt.figure(facecolor='white',figsize=(10.,5.))
-    if stat == 'cmf': 
-        #   set parameters for the avals 
-        amin  = 0.8*np.min(dats[ 0])
-        amax  = 1.2*np.max(dats[1])
-        da    = 2*(amax-amin)/len(dats[1])
-        avals = np.arange(amin,amax,da)
+        # plotting section 
+        if threed: 
+            fig = plt.figure(facecolor='white',figsize=(10.,5.))
+            #ax  = fig.add_subplot(111, projection='3d') 
+            ax  = Axes3D(fig) 
+        elif panel:
+            fig, axes = plt.subplots(nrows=1,ncols=3,sharex=False,sharey=True,
+                                     figsize=(12.,7.),facecolor='white')
+            fig.subplots_adjust(hspace=0.,wspace=0.1) 
+        else:
+            fig = plt.figure(facecolor='white',figsize=(10.,5.))
+        if stat == 'cmf': 
+            #   set parameters for the avals 
+            amin  = 0.8*np.min(dats[ 0])
+            amax  = 1.2*np.max(dats[1])
+            da    = 2*(amax-amin)/len(dats[1])
+            avals = np.arange(amin,amax,da)
 
-        
-        # sort the data based on param
-        groups = []
-        for mdt in m_dirs_trim:
-            group, params = get_sortdat(mdt, param, inr3000)
-            groups.append(group)
-
-        if anim:
-            line1 = []
-            # Now loop over masses and plot
-            for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
-                for (l,p,g) in zip(lines,params,mgroup):
-                    dat   = np.array([md[d][ifrm] for d in g])
-                    fvals = get_cmf(dat,avals)
-                    line1.append(plt.plot(avals, fvals,c+l+m,
-                             label=sym[mstr]+', '+sym[param]+'='+str(p)))
             
-            def animate(ifrm):
+            # sort the data based on param
+            groups = []
+            for mdt in m_dirs_trim:
+                group, params = get_sortdat(mdt, param, inr3000)
+                groups.append(group)
+
+            if anim:
+                line1 = []
                 # Now loop over masses and plot
-                i = 0
-                for c,mgroup,md in zip(colors,groups,dict_list):
+                for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
                     for (l,p,g) in zip(lines,params,mgroup):
                         dat   = np.array([md[d][ifrm] for d in g])
                         fvals = get_cmf(dat,avals)
-                        line1[i][0].set_ydata(fvals)
-                        i += 1 
-                plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
-                return  
+                        line1.append(plt.plot(avals, fvals,c+l+m,
+                                 label=sym[mstr]+', '+sym[param]+'='+str(p)))
+                
+                def animate(ifrm):
+                    # Now loop over masses and plot
+                    i = 0
+                    for c,mgroup,md in zip(colors,groups,dict_list):
+                        for (l,p,g) in zip(lines,params,mgroup):
+                            dat   = np.array([md[d][ifrm] for d in g])
+                            fvals = get_cmf(dat,avals)
+                            line1[i][0].set_ydata(fvals)
+                            i += 1 
+                    plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
+                    return  
 
-            ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]), repeat=False)
-
-        else: 
-             # Now loop over masses and plot
-            for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
-                for (l,p,g) in zip(lines,params,mgroup):
-                    dat   = np.array([md[d][ifrm] for d in g])
-                    fvals = get_cmf(dat,avals)
-                    plt.plot(avals, fvals,c+l+m,
-                             label=sym[mstr]+', '+sym[param]+'='+str(p))
-
-            
-            plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
-        
-        # These are the same whether doing animation or not 
-        plt.xlabel('<'+quant+'>')
-        plt.ylabel('Cumulative function, $f$')
-        plt.ylim(-0.1,1.1)
-        plt.xlim(amin,amax)
-        plt.legend()
-        
-
-    else: 
-        if param == 'number':
-            for mdt,md,c,mstr,m in zip(m_dirs_trim,dict_list,colors,masses,markrs):
-                # Exclude control simulation
-                if mstr != 'm0':
-                    xvals = range(len(mdt))
-                    for x,d in zip(xvals,mdt):
-                        if x == 0:
-                            if 'ts' in stat:
-                                plt.plot(md[d][0],md[d][1],c+m,label=sym[mstr])
-                            else:
-                                plt.semilogy(x,md[d],c+m,label=sym[mstr])
-                        else:
-                            if 'ts' in stat:
-                                plt.plot(md[d][0],md[d][1],c+m)
-                            else:
-                                plt.semilogy(x,md[d],c+m)
-            
-            plt.ylabel('$\\tau$ [Myr]')
-            plt.ylim(-10,600) 
-            if 'ts' in stat:
-                plt.xlabel('max(<A$_1$>) [unitless]') 
-            else:
-                plt.xlabel('Simulation number') 
-            plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.)
-        
-        else: 
-            # Handle 3D plots 
-            if threed: 
-                groups = [] 
-                for mdt in m_dirs_trim:
-                    group, paramr = get_groups3d(mdt, inr3000)
-                    groups.append(group)
-
-                for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
-                    i = 0 # easy way to handle legends  
-                    for g in mgroup:
-                        if 'ts' in stat:
-                            vals = [md[d][1] for d in g]
-                        
-                        # Get correct value of paramf 
-                        if 'fac-1.0' in g[0]:
-                            paramf = -1.0
-                        elif 'fac0.0' in g[0]:
-                            paramf = 0.0
-                        else:
-                            paramf = 1.0 
-                        paramf *= np.ones(len(paramr)) 
-
-                        if i == 0:
-                            ax.plot(paramr,paramf,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
-                        else:
-                            ax.plot(paramr,paramf,vals,c+m+l,alpha=1.0,linewidth=2.5)
-                        i += 1
-                # Make plot labels 
-                ax.set_xlabel('\n'+sym['r']+' '+units['r'],linespacing=2.2)
-                ax.set_ylabel('\n'+sym['fac']+' '+units['fac'],linespacing=2.2)
-                ax.zaxis.set_rotate_label(False) 
-                ax.set_zlabel('$\\tau$ [Myr]', rotation=90.) 
-                # Change default view 
-                ax.view_init(elev=30., azim=225.) 
-                # set axes limits 
-                ax.set_xlim(800.,3200.)
-                ax.set_ylim(-1.2,1.2) 
-                ax.set_zlim(-10,600.)
-                ax.legend() 
+                ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]), repeat=False)
 
             else: 
-                # sort the data based on param
-                groups = []
-                for mdt in m_dirs_trim:
-                    group, params = get_groups(mdt, param, inr3000)
-                    groups.append(group)
-                    plt.ylim(-10,600) 
+                 # Now loop over masses and plot
+                for c,mgroup,md,mstr,m in zip(colors,groups,dict_list,masses,markrs):
+                    for (l,p,g) in zip(lines,params,mgroup):
+                        dat   = np.array([md[d][ifrm] for d in g])
+                        fvals = get_cmf(dat,avals)
+                        plt.plot(avals, fvals,c+l+m,
+                                 label=sym[mstr]+', '+sym[param]+'='+str(p))
+
                 
-                for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
-                    i = 0 # easy way to handle legends  
-                    for g in mgroup:
-                        if 'ts' in stat:
-                            vals = [md[d][1] for d in g]
-                        if len(vals) == len(params):
-                            if i == 0:
-                                plt.plot(params,vals,c+m+l,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                plt.title('t = %1.1f [Myr]' % tarr[ifrm]) 
+            
+            # These are the same whether doing animation or not 
+            plt.xlabel('<'+quant+'>')
+            plt.ylabel('Cumulative function, $f$')
+            plt.ylim(-0.1,1.1)
+            plt.xlim(amin,amax)
+            plt.legend()
+            
+
+        else: 
+            if param == 'number':
+                for mdt,md,c,mstr,m in zip(m_dirs_trim,dict_list,colors,masses,markrs):
+                    aval = 1.0
+                    if mstr == 'm5e7':
+                        aval = 0.6
+                    # Exclude control simulation
+                    if mstr != 'm0':
+                        xvals = range(len(mdt))
+                        for x,d in zip(xvals,mdt):
+                            if x == 0:
+                                if 'ts' in stat:
+                                    plt.plot(md[d][0],md[d][1],marker=m,label=sym[mstr], markersize=11.,color=c,alpha=aval)
+                                else:
+                                    plt.semilogy(x,md[d],marker=m,color=c,label=sym[mstr],alpha=aval)
                             else:
-                                plt.plot(params,vals,c+m+l,alpha=1.0,linewidth=2.5)
+                                if 'ts' in stat:
+                                    plt.plot(md[d][0],md[d][1],marker=m, color=c, markersize=11.,alpha=aval)
+                                else:
+                                    plt.semilogy(x,md[d],marker=m,color=c,alpha=aval)
+                
+                #plt.ylabel('$\\tau$ [Myr]')
+                plt.ylabel('Timescale [Myr]') 
+                plt.ylim(-20,600) 
+                if 'ts' in stat:
+                    plt.xlabel('max(<A$_1$>) [unitless]') 
+                else:
+                    plt.xlabel('Simulation number') 
+                #plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.)
+                plt.legend(loc=4) 
+                plt.xlim(0,0.5) 
+            
+            else: 
+                # Handle 3D plots 
+                if threed: 
+                    groups = [] 
+                    for mdt in m_dirs_trim:
+                        group, paramr = get_groups3d(mdt, inr3000, rcfix='500')
+                        groups.append(group)
+
+                    for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                        i = 0 # easy way to handle legends  
+                        for g in mgroup:
+                            if 'ts' in stat:
+                                vals = [md[d][1] for d in g]
+                            
+                            # Get correct value of paramf 
+                            if 'fac-1.0' in g[0]:
+                                paramf = -1.0
+                            elif 'fac0.0' in g[0]:
+                                paramf = 0.0
+                            else:
+                                paramf = 1.0 
+                            paramf *= np.ones(len(paramr)) 
+
+                            if i == 0:
+                                ax.plot(paramr,paramf,vals,'-',color=c,marker=m,alpha=1.0,label=sym[mstr],linewidth=3.5,markersize=12.)
+                            else:
+                                ax.plot(paramr,paramf,vals,'-',color=c,marker=m,alpha=1.0,linewidth=3.5,markersize=12.)
                             i += 1
+                    # Make plot labels 
+                    ax.set_xlabel('\n'+sym['r']+' '+units['r'],linespacing=2.2)
+                    #ax.set_xlabel('\n Initial position [pc]',linespacing=2.2)
+                    ax.set_ylabel('\n'+sym['fac']+' '+units['fac'],linespacing=2.2)
+                    #ax.set_ylabel('\n Initial velocity [\Omega_b r]',linespacing=2.2) 
+                    ax.zaxis.set_rotate_label(False) 
+                    #ax.set_zlabel('$\\tau$ [Myr]', rotation=90.) 
+                    ax.set_zlabel('Timescale [Myr]', rotation=90.) 
+                                    # set axes limits 
+                    ax.set_xlim(800.,3200.)
+                    ax.set_ylim(-1.2,1.2) 
+                    ax.set_zlim(-10,600.)
+                    ax.legend() 
+                    if anim:
+                        ax.view_init(elev=20., azim=0.) 
+                        # Change default view 
+                        def animate(ifrm):
+                            ax.view_init(elev=20., azim=ifrm)
+                            return fig,
+
+                        ani = animation.FuncAnimation(fig, animate, range(0,360,2)) 
+                    else: 
+                        ax.view_init(elev=25., azim=-150.) 
+
+                elif panel:
+                    groups = [] 
+                    for mdt in m_dirs_trim:
+                        group, paramr = get_groups3d(mdt, inr3000, rcfix='500')
+                        groups.append(group)
+
+                    for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                        i = 0 # easy way to handle legends  
+                        for g in mgroup:
+                            if 'ts' in stat:
+                                vals = [md[d][1] for d in g]
+                            
+                            paramr = np.array(paramr) 
+                            # Get correct value of paramf 
+                            if 'fac-1.0' in g[0]:
+                                paramf = -1.0
+                                axes[0].plot(paramr/1000.,vals,'-',color=c,marker=m,label=sym[mstr],alpha=1.0,linewidth=3.5,markersize=12.)
+                                axes[0].set_xlim(0.9, 3.1)
+                                axes[0].set_ylim(-10.,600.)
+                                axes[0].set_ylabel('Timescale [Myr]') 
+                                axes[0].set_xlabel('Infall position [kpc]')
+                                axes[0].set_title('Prograde to bar')
+                                axes[0].legend(loc=2, prop={'size':14}) 
+                            elif 'fac0.0' in g[0]:
+                                paramf = 0.0
+                                axes[1].plot(paramr/1000.,vals,'-',color=c,marker=m,alpha=1.0,linewidth=3.5,markersize=12.)
+                                axes[1].set_xlim(0.9, 3.1)
+                                axes[1].set_xlabel('Infall position [kpc]')
+                                axes[1].set_title('With bar')
+                            else:
+                                paramf = 1.0 
+                                axes[2].plot(paramr/1000.,vals,'-',color=c,marker=m,alpha=1.0,linewidth=3.5,markersize=12.)
+                                axes[2].set_xlim(0.9, 3.1)
+                                axes[2].set_xlabel('Infall position [kpc]')
+                                axes[2].set_title('Retrograde to bar')
+                            
+                    
+                else: 
+                    # sort the data based on param
+                    groups = []
+                    for mdt in m_dirs_trim:
+                        group, params = get_groups(mdt, param, inr3000)
+                        groups.append(group)
+                        plt.ylim(-10,600) 
+                    
+                    for mgroup,mdt,md,c,mstr,l,m in zip(groups,m_dirs_trim,dict_list,colors,masses,lines,markrs):
+                        i = 0 # easy way to handle legends  
+                        for g in mgroup:
+                            if 'ts' in stat:
+                                vals = [md[d][1] for d in g]
+                            if len(vals) == len(params):
+                                if i == 0:
+                                    plt.plot(params,vals,l,color=c,marker=m,alpha=1.0,label=sym[mstr],linewidth=2.5)
+                                else:
+                                    plt.plot(params,vals,l,color=c,marker=m,alpha=1.0,linewidth=2.5)
+                                i += 1
 
 
 
-                plt.xlabel(sym[param]+' '+units[param])
-                plt.ylabel('$\\tau$ [Myr]' )
-                plt.ylim(-10,600) 
-                dx = 0.25*(max(params) - min(params))/( float(len(params)) )  
-                plt.xlim(min(params)-dx, max(params)+dx)
-                plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.) 
+                    plt.xlabel(sym[param]+' '+units[param])
+                    plt.ylabel('$\\tau$ [Myr]' )
+                    plt.ylim(-10,600) 
+                    dx = 0.25*(max(params) - min(params))/( float(len(params)) )  
+                    plt.xlim(min(params)-dx, max(params)+dx)
+                    #plt.legend(bbox_to_anchor=(0.,1.02,1.,0.102),loc=3,ncol=4,mode='expand',borderaxespad=0.) 
+                    plt.legend(loc=4) 
     
     
     if save:
+        mydir = '/srv/analysis/jdupuy26/figures/'
+        # mydir = os.getcwd() + '/'
+        #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
+        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_')
+        if pctplot:
+            myname += 'pctplot'
+        if panel: 
+            myname += 'panel' 
         if anim:
-            ani.save(quant+stat+param+'.mp4')
+            ani.save(mydir+myname+quant+stat+param+'.mp4',fps=7.,writer='imagemagick')
         else:
-            plt.savefig(quant+'_'+stat+'_'+param+'.eps')
-            plt.savefig(quant+'_'+stat+'_'+param+'.png') 
+            plt.savefig(mydir+myname+quant+'_'+stat+'_'+param+'.eps')
+            plt.savefig(mydir+myname+quant+'_'+stat+'_'+param+'.png') 
     else:
         plt.show() 
     

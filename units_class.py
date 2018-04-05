@@ -72,6 +72,7 @@ class units_COMP:
         self.m_h  = 1.6737236e-24/1.9886e33         # Hydrogen mass in Solar mass unit
         self.k_b  = 1.3806e-23*(3.145e7*1e6)**2/ \
                         (1.9886e30*3.086e16**2)     # [M_sun*pc^2/(K*Myr^2)] Boltzmann's Constant
+        self.G    = 4.4492e-3                       # Gravitational constant 
         self.c    = 2.99792458e10*(3.145e13/3.0866e18)  # [cm/s] Speed of light
         # Note this is incorrect -- do this later
         self.h    = 1.0                         # [erg s] Planck Constant
