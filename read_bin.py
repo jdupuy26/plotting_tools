@@ -247,7 +247,7 @@ def read_otf(fl,precision, **kwargs):
 # Read binary file 
 def read_lv(fl,precision, **kwargs):
     
-    ipos = 1
+    ipos = 0
     for key in kwargs:
         if key == 'ipos':
             ipos = kwargs[key] 
@@ -269,25 +269,28 @@ def read_lv(fl,precision, **kwargs):
     eof = file.tell()
     file.seek(0,0)
    
-    # if ipos = 1, this will terminate after reading 
+    # if ipos = 0, this will terminate after reading 
     #       the first (l,v) diagram 
-    # if ipos = 2, then this loop runs twice and 
+    # if ipos = 1, then this loop runs twice and 
     #       the function will return the second (l,v) diagram  
-    for i in range(ipos): 
+    # And so on for greater ipos numbers 
+    for i in range(ipos+1): 
         # Read integ
         integ = np.fromfile(file,dtype=np.uint32,count=3)
         nlong, nvbins, ntracer = integ[0], integ[1], integ[2]
 
         # Read dat
-        dat = np.fromfile(file,dtype=prec,count=5)
+        dat = np.fromfile(file,dtype=prec,count=8)
         # Parse dat
         t        = dat[0]   # [Myr]
         minvlos  = dat[1]   
         maxvlos  = dat[2]   
         minl     = dat[3]*180./np.pi   
         maxl     = dat[4]*180./np.pi
+        Robs     = dat[5]
+        pobs     = dat[6]
+        vobs     = dat[7]
 
-           
         # Read lv diagram
         lv    = np.zeros((ntracer,nlong,nvbins))
         for it in range(ntracer):

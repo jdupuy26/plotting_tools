@@ -264,10 +264,12 @@ def main():
                         default=False, help="Switch to overplot a contour for the cloud (l,v) emission\n")
     parser.add_argument("--vmnmx", dest="vmnmx",nargs=2,required=False,default=[-300,300],type=float,
                         help="For (l,v) diagrams, set the plotting range")
-    parser.add_argument("--ipos", dest="ipos",type=int,default=1,required=False,
+    parser.add_argument("--ipos", dest="ipos",type=int,default=0,required=False,
                         help="Observer position flag for (l,v) diagrams.\n"
-                             "1: Position in disk @ Rsun\n"
-                             "2: Position is from Andromeda\n")
+                             "0: Position in disk @ Rsun\n"
+                             "1: Position is from Andromeda @ angle 0  deg\n"
+                             "2: Position is from Andromeda @ angle 45 deg\n"
+                             "3: Position is from Andromeda @ angle 90 deg\n")
 
     # parsing arguments            
     args  = parser.parse_args()
