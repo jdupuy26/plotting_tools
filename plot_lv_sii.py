@@ -11,7 +11,9 @@ from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.pyplot import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable 
+# scipy imports
 from scipy.ndimage.filters import gaussian_filter
+from scipy.interpolate import interp1d
 
 # Import from correct directory
 import socket as s
@@ -84,6 +86,8 @@ def get_data(file,**kwargs):
             quant = kwargs[key]
         if key == 'iline':
             iline = kwargs[key]
+
+
     if quant == 'lv':
         t, x, y, lv, lvc = read_lv(file,prec, **kwargs)
         data = lv
@@ -113,7 +117,7 @@ def get_data(file,**kwargs):
 #================================
 # get_log function
 def get_log(data):
-    data[ data <= 0] = 1e-80
+    data[np.where(data <= 0.0)] = 1e-80
     data = np.log10(data)
     return data 
 
@@ -177,7 +181,8 @@ def get_smooth(data,dx,smooth,**kwargs):
 
 #================================
 # initialize() function
-def init(quant, files, **kwargs):
+def init(quant, files, myfrms,  **kwargs):
+    # myfrms are the frames of interest
     ctrl_files = 1
     # parse keyword args
     for key in kwargs:
@@ -185,8 +190,9 @@ def init(quant, files, **kwargs):
             ctrl_files = kwargs[key]
             nctrl      = len(ctrl_files)
 
-    # set length of simulation from file list
-    n    = len(files)
+    # set length of simulation from myfrms
+    #n    = len(files)
+    n    = len(myfrms)
     # setup time array
     tarr = np.zeros(n)
 
@@ -194,27 +200,52 @@ def init(quant, files, **kwargs):
     grdt  = []
     yvals = [] # if quant = lv, y changes w/ time
     
-    for i in range(n):
-        t, x, y, data = get_data(files[i], quant=quant,**kwargs)
+    i = 0
+    for iff in myfrms:
+        t, x, y, data = get_data(files[iff], quant=quant,**kwargs)
         # Set time dependent data 
         yvals.append(y)
         grdt.append(data)
         tarr[i] = t
-           
+        i += 1    
+
     return tarr, x, yvals, grdt 
 
+#==========================================================
+#\func factors()
+# given n, this returns the factors 
+def factors(n): 
+    return sorted(reduce(list.__add__,
+                 ([i,n//i] for i in 
+                 range(1,int(pow(n,0.5)+1)) if n%i == 0)))
 
-#===============================
-# main()
-def main():
-    # Get input file
-    athdir = os.getcwd()+'/'
-    athin = [fname for fname in os.listdir(athdir) if fname.startswith("athinput")][0]
-    # Read input file
-    base, params = read_athinput.readath(athdir+athin) 
-    # Set precision
-    prec  = 32
+#==========================================================
+# \func get_levels() 
+# gets the levels for the contour tracing of the cloud
+# This returns levels that draw contours encompassing given
+# percentages of the total intensity of emission   
+def get_levels(img,pcts):
+    # img : array of cloud mass 
+    # pcts: array of desired percentages (in descending order) 
+
+    # define 1D array of values inside img 
+    n    = 100
+    t    = np.linspace(0, img.max(), n)  
+    # Compute integral within each t 
+    integral = (( img >= t[:, None, None]) * img).sum(axis=(1,2)) 
+    # Interpolate on the integral 
+    f        = interp1d(integral, t, fill_value='extrapolate',bounds_error=False)
     
+    # As long as extrapolated values are negative, should be okay 
+    levels = list(f(pcts))  
+
+    return levels  
+
+
+#==========================================================
+#\func get_args()
+# this function parses CMD line args
+def get_args():
     # Read in system arguments
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
     parser.add_argument("quant",type=str,
@@ -230,7 +261,8 @@ def main():
     parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
                         default=[-5,5],type=float,
                         help="Min/max value for imshow")
-    parser.add_argument("--ifrm", dest="ifrm",type=int,default=0,
+    parser.add_argument("--ifrm", dest="ifrm",type=int,default=[0],
+                        nargs='+',
                         help="Frame of simulation to plot:\n"
                              "  0: tsim = 0 \n"
                              "  1: tsim = dt_dump\n"
@@ -238,7 +270,9 @@ def main():
                              "  .               \n"
                              "  .               \n"
                              "  .               \n"
-                             "  n: tsim = n*dt_dump\n")
+                             "  n: tsim = n*dt_dump\n"
+                             " Note: by entering multiple integers, will make\n"
+                             " panel plots for each ifrm")
     parser.add_argument("--save", dest="save",action='store_true',
                         default=False,
                         help="Switch to save anim or figure")
@@ -262,7 +296,7 @@ def main():
                         default=False, help="Switch if plotting old sii files, containing only 6717 emission\n")
     parser.add_argument("--ctrace",dest="ctrace",action='store_true',
                         default=False, help="Switch to overplot a contour for the cloud (l,v) emission\n")
-    parser.add_argument("--vmnmx", dest="vmnmx",nargs=2,required=False,default=[-300,300],type=float,
+    parser.add_argument("--vmnmx", dest="vmnmx",nargs=2,required=False,default=[-400,400],type=float,
                         help="For (l,v) diagrams, set the plotting range")
     parser.add_argument("--ipos", dest="ipos",type=int,default=0,required=False,
                         help="Observer position flag for (l,v) diagrams.\n"
@@ -270,23 +304,43 @@ def main():
                              "1: Position is from Andromeda @ angle 0  deg\n"
                              "2: Position is from Andromeda @ angle 45 deg\n"
                              "3: Position is from Andromeda @ angle 90 deg\n")
-
+    parser.add_argument("--noplot", dest="noplot",action='store_true',
+                        default=False, required=False, 
+                        help="Switch to return only stitched together array\n"
+                             "To be used if this file is imported from another file\n")
+    return parser.parse_args() 
+     
+#===============================
+# main()
+def main(args):
+    # Get input file
+    athdir = os.getcwd()+'/'
+    athin = [fname for fname in os.listdir(athdir) if fname.startswith("athinput")][0]
+    # Read input file
+    base, params = read_athinput.readath(athdir+athin) 
+    # Set precision
+    prec  = 32
+    
     # parsing arguments            
-    args  = parser.parse_args()
-    quant = args.quant
-    anim  = args.anim
-    iani  = args.iani
+    quant  = args.quant
+    anim   = args.anim
+    iani   = args.iani
     qmin, qmax = args.qminmax[0], args.qminmax[1] 
-    ifrm  = args.ifrm
-    save  = args.save
-    nolog = args.nolog
-    interp= args.interp
-    smooth= args.smooth
-    iline = args.iline
-    old   = args.old
-    ctrace=args.ctrace
-    vmnmx = args.vmnmx
-    ipos  = args.ipos
+    ifrm   = args.ifrm
+    save   = args.save
+    nolog  = args.nolog
+    interp = args.interp
+    smooth = args.smooth
+    iline  = args.iline
+    old    = args.old
+    ctrace = args.ctrace
+    vmnmx  = args.vmnmx
+    ipos   = args.ipos
+    noplot = args.noplot
+    
+    # Get panel flag 
+    pflag = True if np.size(ifrm) > 1 else False 
+    if np.size(ifrm) == 1: ifrm = ifrm[0] 
 
     # Get lv files 
     if quant == 'lv' or quant == 'lvc':
@@ -307,12 +361,22 @@ def main():
 
     # modify iani from default value 
     if iani[1] == 0:
-        iani[1] = n-1
+        iani[1] = n
+    
+    # Determine myframes
+    if anim:
+        myfrms = range(iani[0],iani[1])
+    elif pflag: 
+        myfrms = ifrm
+    else:
+        myfrms = [ifrm] 
+
+
     # Conflicting argument checks 
-    if anim and ifrm != 0:
-        print("[main]: specifying a single frame while animating doesn't make sense")
-        quit()
-    if ifrm > (n-1):
+    #if anim and myfrms != 0:
+    #    print("[main]: specifying a single frame while animating doesn't make sense")
+    #    quit()
+    if myfrms[-1] > (n-1):
         print("[main]: frame out of range of simulation!")
         quit()
     if smooth and quant =='lv':
@@ -323,15 +387,18 @@ def main():
         quit()
     
     # Get the data
-    tarr, x, y, data = init(quant,files,prec=prec,iline=iline,old=old,ipos=ipos)
+    tarr, x, y, data = init(quant,files,myfrms,prec=prec,iline=iline,old=old,ipos=ipos)
     if ctrace: 
-        tarr, x, y, cloud = init('lvc',files,prec=prec,iline=iline,old=old,ipos=ipos)
-        # Set global values for stuff
-        nlevels = 20 
-        alpha   = 0.3
-        color   = 'springgreen'
-        step    = 0.01
-
+        tarr, x, y, cloud = init('lvc',files,myfrms,prec=prec,iline=iline,old=old,ipos=ipos)
+        # Set global values for drawing contours  
+        alpha   = 1.0
+        colors=['#40E0D0','#00C957']#,'#FF3030']
+        pcts = np.array([0.9,0.5]) # percentages for contours 
+        if pflag:
+            lw = 1.
+        else: 
+            lw = 2.
+        
         # Get labels 
     title = get_title(quant,nolog,iline=iline)
     xlab  = get_xlabel(quant)
@@ -341,24 +408,33 @@ def main():
     if anim:
         print("[main]: Animating from t = %1.1f [Myr]\n" 
               "                    to t = %1.1f [Myr]\n"
-                    %( tarr[iani[0]], tarr[iani[1]] ) )  
+                    %( tarr[0], tarr[-1] ) )  
     if interp != 'None':
         print("[main]: Interpolation is on! Using %s to"
               " interpolate\n" %( interp ) )
-    # Open figure
-    fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
-    ax1 = fig.add_subplot(111, axisbg='black')
+
+    if noplot:
+        if ctrace:
+            return tarr, x, y, data, cloud
+        else: 
+            return tarr, x, y, data 
+        quit() 
+
+    if not pflag:
+        # Open figure
+        fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
+        ax1 = fig.add_subplot(111, axisbg='black')
     
     # Handle animation
     if anim:
         # Get spacing
         dx = x[1] - x[0]
-        dy = y[iani[0]][1] - y[iani[0]][0]
+        dy = y[0][1] - y[0][0]
         #  get extent
         mnx = x[ 0] - 0.5*dx
         mxx = x[-1] + 0.5*dx
-        mny = y[iani[0]][ 0] - 0.5*dy
-        mxy = y[iani[0]][-1] + 0.5*dy
+        mny = y[0][ 0] - 0.5*dy
+        mxy = y[0][-1] + 0.5*dy
         
         # set mny, mxy for whole animation
         if quant == 'lv' or quant == 'lvc':
@@ -368,29 +444,32 @@ def main():
             #ax1.set_facecolor('black') 
       
         if smooth:
-            data[iani[0]] = get_smooth(data[iani[0]],dx,smooth)
+            data[0] = get_smooth(data[0],dx,smooth)
        
         if not nolog:
-            data[iani[0]] = get_log(data[iani[0]])
+            data[0]  = get_log(data[0])
+            if ctrace:
+            # Normalize cloud
+                cloud[0] /= np.sum(cloud[0]) 
         
-        im = ax1.imshow(data[iani[0]], extent=[mnx,mxx,mny,mxy],
+        im = ax1.imshow(data[0], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
                         vmin = qmin, vmax = qmax,
                         interpolation = interp)
 
         if ctrace:
-            m = np.amax(cloud[iani[0]])
+            m = np.amax(cloud[0])
             if m != 0:
-                levels = np.linspace(0,m,nlevels) + step
-                ax1.contourf(cloud[iani[0]],levels,extent=[mnx,mxx,mny,mxy],
-                             colors=color,origin='lower',alpha=alpha)
-        
+                ax1.contour(cloud[0],levels=get_levels(cloud[0],pcts),
+                             extent=[mnx,mxx,mny,mxy],
+                             colors=colors,origin='lower',alpha=alpha,linewidths=lw)
+    
         ax1.set_xlim(mnx,mxx)
         if quant == 'lv':
             ax1.set_ylim(mny0,mxy0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
-        ax1.set_title('t = %1.1f [Myr]' % tarr[iani[0]]) 
+        ax1.set_title('t = %1.1f [Myr]' % tarr[0]) 
 
         div  = make_axes_locatable(ax1)
         cax  = div.append_axes('right', '5%', '5%')
@@ -414,7 +493,10 @@ def main():
                 if smooth:
                     data[ifrm] = get_smooth(data[ifrm],dx,smooth)
                 if not nolog:
-                    data[ifrm] = get_log(data[ifrm])
+                    data[ifrm]  = get_log(data[ifrm])
+                    if ctrace:
+                        # Normalize cloud
+                        cloud[ifrm] /= np.sum(cloud[ifrm]) 
             # make the plot
             im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
@@ -424,9 +506,9 @@ def main():
             if ctrace:
                 m = np.amax(cloud[ifrm])
                 if m != 0:
-                    levels = np.linspace(0,m,nlevels) + step
-                    ax1.contourf(cloud[ifrm],levels,extent=[mnx,mxx,mny,mxy],
-                                 colors=color,origin='lower',alpha=alpha)
+                    ax1.contour(cloud[ifrm],levels=get_levels(cloud[ifrm],pcts),
+                                 extent=[mnx,mxx,mny,mxy],
+                                 colors=colors,origin='lower',alpha=alpha,linewidths=lw)
             # Make sure the axes stay the same
             if quant == 'lv':
                 ax1.set_ylim(mny0,mxy0)
@@ -439,46 +521,132 @@ def main():
             return  
 
         # do the animation
-        ani = animation.FuncAnimation(fig, animate, range(iani[0],iani[1]+1), 
+        ani = animation.FuncAnimation(fig, animate, range(len(myfrms)), 
                                           init_func=anim_init,repeat=False)
         if save:
             print("[main]: Saving animation")
             ani.save(quant+".gif",writer='imagemagick')
             #ani.save(quant+".avi")
+
+    # Handle making panel plots 
+    elif pflag: 
+        # Get the factors 
+        fact    = factors(len(ifrm))
+        # Set the number of panels in x and y direction 
+        if len(fact) == 2:
+            nxp = np.max(fact) 
+            nyp = np.min(fact)
+        else:
+            nxp = np.max(fact[1:-1])
+            nyp = np.min(fact[1:-1])
+        
+        # define ratio
+        ratio = float(nxp)/float(nyp) 
+        fsize = (ratio*7., 7.)
+        # Create figure object
+        fig, axes = plt.subplots(nyp,nxp, sharex='col', sharey='row',facecolor='white',
+                                 figsize=(ratio*7.,7.)) 
+        fig.subplots_adjust(hspace=0.1, wspace=0.1)
+        # define the colorbar
+        fig.subplots_adjust(top=0.8) 
+        cax = fig.add_axes([0.16,0.85,0.7,0.02])
+
+        # Set spacing stuff
+        dx  = x[1] - x[0]
+        mnx = x[0 ] - 0.5*dx
+        mxx = x[-1] + 0.5*dx
+        if quant == 'lv' or quant == 'lvc':
+            mny0 = vmnmx[0]
+            mxy0 = vmnmx[1]
+
+
+        # Now plot
+        for (ax, iff) in zip(axes.flat, range(len(myfrms))):
+            ax.set_axis_bgcolor('black')
+            # Get spacing
+            dy = y[iff][1] - y[0][0]
+            #  get extent
+            mny = y[iff][ 0] - 0.5*dy
+            mxy = y[iff][-1] + 0.5*dy
+            
+            # Take log
+            if not nolog:
+                data[iff]  = get_log(data[iff]) 
+                if ctrace:
+                    m = np.amax(cloud[iff])
+                    if m != 0:
+                        # Normalize cloud
+                        cloud[iff] /= np.sum(cloud[iff]) 
+
+
+            im = ax.imshow(data[iff], extent=[mnx,mxx,mny,mxy],
+                            origin='lower',aspect=asp,
+                            vmin = qmin, vmax = qmax, 
+                            interpolation=interp)
+            if ctrace: 
+                m = np.amax(cloud[iff])
+                if m != 0:
+                    ax.contour(cloud[iff],levels=get_levels(cloud[iff],pcts),
+                                 extent=[mnx,mxx,mny,mxy],
+                                 colors=colors,origin='lower',alpha=alpha,linewidths=lw)
+            ax.set_xlim(mnx ,mxx )
+            if quant == 'lv':
+                ax.set_ylim(mny0,mxy0)
+                mxy = mxy0 
+            ax.text(0.9*mnx, 0.8*mxy, 't = %1.1f [Myr]' % (tarr[iff]),
+                        bbox={'facecolor':'white', 'alpha':0.9, 'pad':5})
+            if quant == 'lv' and ipos == 0:
+                ax.set_xticks([-100,0,100])
+            
+        # define global labels
+        fig.text(0.5, 0.04, xlab, ha='center')
+        fig.text(0.03, 0.5, ylab, va='center', rotation='vertical') 
+
+        # Set colorbar
+        cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
+        cax.xaxis.set_ticks_position('bottom') 
+        cb.ax.set_title(title) 
+
+        
+    # Handle plotting single frame 
     else:
         # Get spacing
         dx = x[1] - x[0]
-        dy = y[ifrm][1] - y[ifrm][0]
+        dy = y[0][1] - y[0][0]
         #  get extent
         mnx = x[ 0] - 0.5*dx
         mxx = x[-1] + 0.5*dx
-        mny = y[ifrm][ 0] - 0.5*dy
-        mxy = y[ifrm][-1] + 0.5*dy
+        mny = y[0][ 0] - 0.5*dy
+        mxy = y[0][-1] + 0.5*dy
 
         if quant == 'lv' or quant == 'lvc':
             mny0 = vmnmx[0]
             mxy0 = vmnmx[1]
         
         if smooth:
-            data[ifrm] = get_smooth(data[ifrm],dx,smooth)
+            data[0] = get_smooth(data[0],dx,smooth)
         if not nolog:
-            data[ifrm] = get_log(data[ifrm])
-        
-        im = ax1.imshow(data[ifrm], extent=[mnx,mxx,mny,mxy],
+            data[0]  = get_log(data[0])
+            if ctrace: 
+                # Normalize cloud
+                cloud[0] /= np.sum(cloud[0])
+
+        im = ax1.imshow(data[0], extent=[mnx,mxx,mny,mxy],
                         origin='lower',aspect=asp,
                         vmin = qmin,vmax = qmax,
                         interpolation = interp)
         if ctrace:
-            m = np.amax(cloud[ifrm])
+            m = np.amax(cloud[0])
             if m != 0:
-                levels = np.linspace(0.0,m,nlevels) + step
-                ax1.contourf(cloud[ifrm],levels,extent=[mnx,mxx,mny,mxy],
-                             colors=color,origin='lower',alpha=alpha) 
+                ax1.contour(cloud[0],levels=get_levels(cloud[0],pcts),
+                             extent=[mnx,mxx,mny,mxy],
+                             colors=colors,origin='lower',alpha=alpha,linewidths=lw)
+
         ax1.set_xlim(mnx,mxx)
         ax1.set_ylim(mny0,mxy0)
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(ylab)
-        ax1.set_title('t = %1.1f [Myr]' % tarr[ifrm]) 
+        ax1.set_title('t = %1.1f [Myr]' % tarr[0]) 
         plt.colorbar(im,label=title)
 
         if save:
@@ -491,5 +659,8 @@ def main():
         plt.show()
     #================================================================================#
             
-main()
+if __name__ == '__main__':
+    # plot_lv_sii.py called from cmd line
+    args = get_args()
+    main(args) 
 

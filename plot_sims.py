@@ -159,6 +159,7 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
         vx     = (M1/d)*(x1_cart/X1) - (M2/d + omg*X1)*(x2_cart/X1)
         vy     = (M1/d)*(x2_cart/X1) + (M2/d + omg*X1)*(x1_cart/X1) 
         vlos   = vx*(xtosun/rtosun) + vy*(ytosun/rtosun) - vsun*sinL  
+        #vlos   = (np.sqrt((M1/d)**2. + (M2/d+omg*X1)**2.)/X1 - vsun/R0 )*R0*sinL
 
     elif quant == 'jl':
         jl     = np.sqrt(gamm1*ie/d)*np.sqrt( np.pi/(ucomp.G*(d/hs)))/1.e3 
@@ -175,7 +176,7 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
                   'v1':M1/d,'v2':M2/d + omg*x1,'v3':M3/d,
                   'M1':M1,'M2':M2,'M3':M3,
-                  'V':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
+                  'V':np.sqrt(M1**2.+(M2 + omg*x1*d)**2.+M3**2.)/d,
                   'cs': np.sqrt(gamm1*ie/d), 
                   's1': s1,'s1c': s1,
                     # Jeans length 
@@ -446,7 +447,7 @@ def get_levels(img,pcts):
     # pcts: array of desired percentages (in descending order) 
 
     # define 1D array of values inside img 
-    n    = 1000
+    n    = 100
     t    = np.linspace(0, img.max(), n)  
     # Compute integral within each t 
     integral = (( img >= t[:, None, None]) * img).sum(axis=(1,2)) 
@@ -565,15 +566,9 @@ def factors(n):
                  ([i,n//i] for i in 
                  range(1,int(pow(n,0.5)+1)) if n%i == 0)))
 
-#------------- MAIN FUNCTION ------------------------#
-def main():
-
-    ctable = 'magma'
-    plt.rcParams['image.cmap'] = ctable
-    base, params = get_athinput() 
-    mc           = params[0].mhvc
-
-
+#\func get_args()
+# this function parses CMD line args
+def get_args():
     # Read in system arguments
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
     parser.add_argument("quant",type=str,
@@ -636,9 +631,23 @@ def main():
     parser.add_argument("--rtrace",dest="rtrace",action='store_true',
                         default=False, required=False,
                         help="Switch to trace out rays for (l,v) diagrams") 
+    parser.add_argument("--noplot",dest="noplot",action='store_true',
+                        default=False, required=False,
+                        help="Switch to return only stitched together array\n"
+                             "To be used if this file is imported from another file\n")
+    return parser.parse_args() 
+    
+ 
+
+#------------- MAIN FUNCTION ------------------------#
+def main(args):
+
+    ctable = 'magma'
+    plt.rcParams['image.cmap'] = ctable
+    base, params = get_athinput() 
+    mc           = params[0].mhvc
 
     # parsing arguments            
-    args  = parser.parse_args()
     quant = args.quant
     anim  = args.anim
     iani  = args.iani
@@ -657,6 +666,7 @@ def main():
     vvec     = args.vvec
     ms       = args.ms
     rtrace   = args.rtrace 
+    noplot   = args.noplot
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -717,6 +727,9 @@ def main():
 
     else:
         tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
+
+    if noplot:
+        return tarr, x1, x2, imgs 
 
     # get rays 
     if rtrace:
@@ -958,8 +971,9 @@ def main():
     else:
         plt.show() 
     
-main() 
-print('Program complete.') 
-
+if __name__ == '__main__':
+   # plot_sims.py called from cmd line 
+   args = get_args() 
+   main(args) 
 
 
