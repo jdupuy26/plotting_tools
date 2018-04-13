@@ -292,10 +292,12 @@ def read_lv(fl,precision, **kwargs):
         vobs     = dat[7]
 
         # Read lv diagram
-        lv    = np.zeros((ntracer,nlong,nvbins))
-        for it in range(ntracer):
-            for i in range(nlong):
-                lv[it][i]   = np.fromfile(file,dtype=prec,count=nvbins)
+        #lv    = np.zeros((ntracer,nlong,nvbins))
+        lv = np.fromfile(file,dtype=prec,count=ntracer*nlong*nvbins)
+        lv = np.reshape(lv, (ntracer,nlong,nvbins) ).astype(np.float64) # convert to float64  
+        #for it in range(ntracer):
+        #    for i in range(nlong):
+        #        lv[it][i]   = np.fromfile(file,dtype=prec,count=nvbins)
         
         # construct velocity, longitude array
         lvals = np.linspace(minl   ,maxl   ,nlong )
