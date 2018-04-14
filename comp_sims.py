@@ -5,6 +5,7 @@ import os
 import subprocess as sbp
 import argparse
 from argparse import RawTextHelpFormatter
+import matplotlib.pyplot as plt
 # Import from correct directory
 import socket as s
 comp = s.gethostname()
@@ -68,6 +69,7 @@ def get_dirs():
 def get_args():
     # Read in system arguments
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
+    # Arguments for (l,v) and (sim) plotting
     parser.add_argument("quant",type=str,
                         help="Plotting options:\n"
                               " Any quant available in get_quant\n")
@@ -129,7 +131,7 @@ def get_args():
                         default=False, required=False,
                         help="Switch to trace out rays for (l,v) diagrams") 
     parser.add_argument("--noplot",dest="noplot",action='store_true',
-                        default=False, required=False,
+                        default=True, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
     parser.add_argument("--interp",dest="interp",type=str,default='None',
@@ -158,22 +160,335 @@ def get_args():
                              "1: Position is from Andromeda @ angle 0  deg\n"
                              "2: Position is from Andromeda @ angle 45 deg\n"
                              "3: Position is from Andromeda @ angle 90 deg\n")
-
+    # Arguments for selecting simulations to plot
+    parser.add_argument("--rpos",dest="rpos",type=str, default=['5500'],
+                        required=False,nargs='+',
+                        help="Position of cloud, can be any number of entries so\n"
+                             "as to compare different position.\n"
+                             " MUST correspond to directory however")
+    parser.add_argument("--rc",dest="rc",type=str, default=['500'],
+                        required=False,nargs='+',
+                        help="Radius of cloud, can be any number of entries so\n"
+                             "as to compare different position.\n"
+                             " MUST correspond to directory however")
+    parser.add_argument("--fac",dest="fac",type=str, default=['-1.0'],
+                        required=False,nargs='+',
+                        help="Factor for cloud, can be any number of entries so\n"
+                             "as to compare different position.\n"
+                             " MUST correspond to directory however")
+    parser.add_argument("--ang",dest="ang",type=str, default=['0.0'],
+                        required=False,nargs='+',
+                        help="Angle for cloud, can be any number of entries so\n"
+                             "as to compare different position.\n"
+                             " MUST correspond to directory however")
+    parser.add_argument("--mc",dest="mc",type=str, default=['1e7'],
+                        required=False,nargs='+',
+                        help="Mass for cloud, can be any number of entries so\n"
+                             "as to compare different position.\n"
+                             " MUST correspond to directory however")
+    parser.add_argument("--te",dest="te",type=str,default=['325'],
+                        required=False,nargs='+',
+                        help="Ending time for cloud collision")
 
     return parser.parse_args() 
 
+#\func factors()
+# given n, this returns the factors 
+def factors(n): 
+    return sorted(reduce(list.__add__,
+                 ([i,n//i] for i in 
+                 range(1,int(pow(n,0.5)+1)) if n%i == 0)))
+
+def get_sims(args, cwd = os.getcwd()):
+    # Parse relevant args for simulation selection
+    rpos     = args.rpos
+    rhvc     = args.rc
+    facvhvc  = args.fac
+    ahvc     = args.ang
+    mhvc     = args.mc
+    thvce    = args.te
+
+    # Construct simulation names 
+    cwd += '/' 
+
+    # Define a list to store directory names
+    mysims = []
+
+    # Now loop over parameters and construct directory names
+    print("[get_sims]: Constructing relevant simulation directories...") 
+    for m in mhvc:
+        for te in thvce:
+            for rc in rhvc:
+                for r in rpos:
+                    for a in ahvc:
+                        for fac in facvhvc:
+                            simname = cwd+'m'+m+'/te'+te+'/rc'+rc+'/r'+r+'/a'+a+'/fac'+fac+'/'
+                            mysims.append(simname) 
+    return mysims 
+
+def get_data(args, sims):
+    # Parse relevant arguments for the data
+    quant = args.quant
+    # Select proper plotting file based on quant
+    if quant=='lv' or quant=='lvc' or quant=='sii':
+        lvflag = True
+        reader = plv
+    else: 
+        lvflag = False 
+        reader = ps
+
+    # Create data list 
+    data_list = []
+    print('[get_data]: Reading simulations files...') 
+    # Now loop over simulations and read data
+    for s in sims:
+        os.chdir(s)
+        try:
+            data_list.append(reader.main(args)) 
+        except OSError:
+            print('[get_data]: Sim files not present for %s!' %(s))
+
+    return lvflag, data_list  
+
+def make_plots(args,lvflag,data,sims):
+    # Specify the control simulation directory
+    ctrl_path = '/srv/scratch/jdupuy26/jid/jid_adiabatic'\
+                '/longevity_jid/m0.0/te325/rc500/r10000/a0.0'\
+                '/fac1.0'
+
+    #-----------------------------------------#
+    # First parse relevant plotting arguments
+    vmnmx    = args.vmnmx
+    interp   = args.interp
+    qminmax  = args.qminmax
+    mnx, mxx = args.mnmx
+    ctrace   = args.ctrace
+    qflag    = True if np.size(qminmax) > 1 else False 
+    quant    = args.quant
+    nolog    = args.nolog
+    iline    = args.iline
+    ipos     = args.ipos
+    ifrm     = args.ifrm
+    cart     = args.cart
+    log      = args.log
+    iunit    = args.units  
+    mnx, mxx = args.mnmx
+    mny, mxy = mnx, mxx
+
+    # Parse relevant args for simulation selection
+    rpos     = args.rpos
+    rhvc     = args.rc
+    facvhvc  = args.fac
+    ahvc     = args.ang
+    mhvc     = args.mc
+    thvce    = args.te
+
+    if len(rpos) > 1:
+        var  = rpos
+        pstr  = '$r_{\\rm pos,0}$ = '
+        punit = ' [pc]'  
+    elif len(facvhvc) > 1:
+        var  = facvhvc
+        pstr  = '$f_c$ = '
+        punit = ''
+    elif len(rhvc) > 1:
+        var = rhvc
+        pstr  = '$r_{c}$ = '
+        punit = ' [pc]'
+    elif len(ahvc) > 1:
+        var = ahvc
+        pstr  = '$\\phi_{pos,0}$ = '
+        punit = ' [rad]'
+    elif len(mhvc) > 1:
+        var = mhvc
+        pstr  = '$M_{c}$ = '
+        punit = ' [M$_{\\odot}$]'
+    else:
+        var = thvce
+        pstr  = '$\\Delta t$ = '
+        punit = ' [Myr]' 
+
+    # ctrace stuff
+    if ctrace:
+        colors = ['#40E0D0','#00C957']  
+        lw     = 1.
+        alpha  = 1.
+        
+    #-----------------------------------------#
+
+    #-----------------------------------------#
+    # Determine the size of the panel
+    fact = factors(len(data))
+    if len(fact) == 2:
+        nxp = np.max(fact)
+        nyp = np.min(fact) 
+    else:
+        nxp = np.max(fact[1:-1])
+        nyp = np.min(fact[1:-1])
+    ratio = float(nxp)/float(nyp)
+    fsize = (ratio*7.,7.)
+    # Create figure object
+    fig, axes = plt.subplots(nyp,nxp,sharex='col', sharey='row',facecolor='white',
+                             figsize=fsize) 
+
+    fig.subplots_adjust(hspace=0.1, wspace=0.1)
+    # define the colorbar
+    fig.subplots_adjust(top=0.8) 
+    cax = fig.add_axes([0.16,0.85,0.7,0.02])
+    #-----------------------------------------#
+
+    
+    #-----------------------------------------#
+    # Handle making (l,v) plots first 
+    if lvflag:
+        if qflag:
+            qmin = qminmax[0]
+            qmax = qminmax[1]
+        else:
+            qmin = -5
+            qmax =  5
+
+        # Get labels 
+        title = plv.get_title(quant,nolog,iline=iline)
+        xlab  = plv.get_xlabel(quant)
+        ylab  = plv.get_ylabel(quant)
+        asp   = plv.get_aspect(quant) 
+
+        # Animation functionality? How to implement, do this next week 
+        for iff in range(len(ifrm)):
+            # Now plot
+            for (ax, dat, v) in zip(axes.flat, data, var):
+                # Set background color for image
+                ax.set_axis_bgcolor('black')
+                # Parse data
+                if ctrace:
+                    tarr, x, y, imgs, imgc = dat  
+                else: 
+                    tarr, x, y, imgs       = dat
+
+
+                # Set spacing stuff
+                dx  = x[1 ] - x[0]
+                mnx = x[0 ] - 0.5*dx
+                mxx = x[-1] + 0.5*dx
+                if quant == 'lv' or quant == 'lvc':
+                    mny0 = vmnmx[0]
+                    mxy0 = vmnmx[1]
+                # Get spacing
+                dy = y[iff][1] - y[iff][0]
+                #  get extent
+                mny = y[iff][ 0] - 0.5*dy
+                mxy = y[iff][-1] + 0.5*dy
+
+                # Take log
+                if not nolog:
+                    imgs[iff]  = plv.get_log(imgs[iff]) 
+                    if ctrace:
+                        m = np.amax(imgc[iff])
+                        if m != 0:
+                            # Normalize cloud
+                            imgc[iff] /= np.sum(imgc[iff]) 
+                
+                im = ax.imshow(imgs[iff], extent=[mnx,mxx,mny,mxy],
+                                origin='lower',aspect=asp,
+                                vmin = qmin, vmax = qmax, 
+                                interpolation=interp)
+                if ctrace: 
+                    if tarr[iff] > params[0].thvcs:
+                        ax.contour(imgc[iff],levels=plv.get_levels(imgc[iff]),
+                                     extent=[mnx,mxx,mny,mxy],
+                                     colors=colors,origin='lower',alpha=alpha,linewidths=lw)
+                ax.set_xlim(mnx ,mxx )
+                if quant == 'lv':
+                    ax.set_ylim(mny0,mxy0)
+                    mxy = mxy0 
+                ax.text(0.9*mnx, 0.8*mxy, '%s%s%s' % (pstr,v,punit),
+                            bbox={'facecolor':'white', 'alpha':0.9, 'pad':5})
+                if quant == 'lv' and ipos == 0:
+                    ax.set_xticks([-100,0,100])
+                
+                # define global labels
+                fig.text(0.5, 0.04, xlab, ha='center')
+                fig.text(0.03, 0.5, ylab, va='center', rotation='vertical') 
+
+            # Set colorbar
+            cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
+            cax.xaxis.set_ticks_position('bottom') 
+            cb.ax.set_title(title + ' @ t = %1.1f [Myr]' % (tarr[iff]) ) 
+    
+    # Now handle plotting simulations 
+    else: 
+        # Get labels
+        xlab, ylab, clab = ps.get_labels(quant,iunit,log) 
+        # Base parameters off of control simulation 
+        base, params = ps.get_athinput(ctrl_path)
+        # get face centered meshgrid
+        x1f, x2f           = ps.get_fc(cart,params) 
+        # get cartesian version of face centered meshgrid
+        if cart:
+            x1cf, x2cf = x1f, x2f
+        else:
+            x1cf, x2cf = x1f*np.cos(x2f), x1f*np.sin(x2f) 
+        # get cartesian version of 'cell centered' meshgrid
+        x1c, x2c           = ps.get_fc2(cart,params)
+        if cart:
+            x1cc, x2cc = x1c, x2c
+        else:
+            x1cc, x2cc = x1c*np.cos(x2c),  x1c*np.sin(x2c)
+
+        # Animation functionality? Need to implement later 
+        for iff in range(len(ifrm)):
+            for (ax, dat, v) in zip(axes.flat, data, var):
+                # Parse data
+                if ctrace:
+                    tarr, x, y, imgs, imgc = dat  
+                else: 
+                    tarr, x, y, imgs       = dat
+
+                # Select qmin/qmax
+                if qflag:
+                    qmin, qmax = qminmax[0], qminmax[1]
+                else:
+                    qmin, qmax = np.min(imgs), np.max(imgs)
+                
+                # Now plot
+                im = ax.pcolorfast(x1cf,x2cf,imgs[iff],vmin=qmin,vmax=qmax) 
+                if ctrace:
+                    if tarr[iff] > params[0].thvcs:  
+                        imc  = ax.contour(x1cc,x2cc,imgc[iff],levels=ps.get_levels(imgc[iff])
+                                                             ,colors=colors,alpha=alpha,linewidths=lw)
+                ax.set_xlim(mnx,mxx)
+                ax.set_ylim(mnx,mxx)
+                #ax.set_aspect('equal')  
+                ax.text(0.9*mnx, 0.8*mxy, '%s%s%s' % (pstr,v,punit),
+                            bbox={'facecolor':'white', 'alpha':0.9, 'pad':5})
+                # This makes .eps files manageable 
+                im.set_rasterized(True) 
+
+            # define global labels
+            fig.text(0.5, 0.04, xlab, ha='center')
+            fig.text(0.03, 0.5, ylab, va='center', rotation='vertical') 
+
+            # Set colorbar
+            cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
+            cax.xaxis.set_ticks_position('bottom') 
+            cb.ax.set_title(clab + ' @ t = %1.1f [Myr]' %(tarr[iff]) ) 
+
+
+        
+    return 
+
 def main():
     cwd  = os.getcwd() 
-    dirs = get_dirs()
     args = get_args() 
-
-
-    for d in dirs:
-        os.chdir(d)
-        try:  
-            x = plv.main(args) 
-        except OSError:
-            print('Sim files not present for %s!' %(d)) 
+    
+    # Now based off of simulation selection, get relevant directories 
+    sims = get_sims(args, cwd)  
+    # Now get the data for each simulation 
+    lvflag, data = get_data(args,sims)
+    # Now construct the plots 
+    make_plots(args,lvflag,data,sims) 
+    plt.show() 
 
 
     return 
