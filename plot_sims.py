@@ -251,8 +251,10 @@ def get_rays(x1,x2,params):
     
 #\func get_athinput():
 # reads athinput and returns base, params
-def get_athinput():
-    athin = os.getcwd()+'/'+[fnm for fnm in os.listdir(os.getcwd()+'/')
+def get_athinput(cwd=-1):
+    if cwd == -1:
+        cwd = os.getcwd()
+    athin = cwd + '/'+[fnm for fnm in os.listdir(os.getcwd()+'/')
                                         if fnm.startswith('athinput')][0]
     base, params = read_athinput.readath(athin) 
     return base, params    
@@ -347,7 +349,7 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False,**kwargs):
 
     # Note x1 is converted to kpc
     if ctrace:
-        aprc, appc = get_fc(False, True) 
+        aprc, appc = get_fc(False, params, True) 
         c_arr[:] *= aprc               # get cloud mass  
         return tarr, x1/1.e3, x2, quant_arr, c_arr 
     elif vvec:
@@ -355,7 +357,7 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False,**kwargs):
         v1_arr, v2_arr = vel_p2c(v1_arr, v2_arr, x1, x2)
         return tarr, x1/1.e3, x2, quant_arr, v1_arr, v2_arr 
     elif quant == 's1c' or quant == 'mcent':
-        aprc, appc = get_fc(False, True) 
+        aprc, appc = get_fc(False, params, True) 
         quant_arr[:] *= aprc
         # Get mass in central region 
         mcent     = np.sum(quant_arr[:,:,(x1 > 0.0) & (x1 < 500)],axis=(1,2))
@@ -387,8 +389,7 @@ def vel_p2c(vr, vt, x1, x2):
 # \func get_fc()
 # given cell centered x1, x2, returns face centered grid 
 # THIS ASSUMES ilog=1 in x1-dir (i.e. uniform log spacing) 
-def get_fc(cart, apc=False):
-    base, params = get_athinput() 
+def get_fc(cart, params, apc=False):
    
     if cart:
         x1f = np.linspace(params[0].x1min/1.e3,
@@ -419,8 +420,7 @@ def get_fc(cart, apc=False):
 #   only used for cloud tracing,
 #   so that full range of 2pi is plotted
 # THIS ASSUMES ilog=1 in x1-dir (i.e. uniform log spacing) 
-def get_fc2(cart):
-    base, params = get_athinput() 
+def get_fc2(cart, params):
     
     if cart:
         x1f = np.linspace(params[0].x1min/1.e3,
@@ -442,7 +442,7 @@ def get_fc2(cart):
 # gets the levels for the contour tracing of the cloud
 # This returns levels that draw contours encompassing given
 # percentages of the cloud mass
-def get_levels(img,pcts):
+def get_levels(img,pcts=np.array([0.95,0.5])):
     # img : array of cloud mass 
     # pcts: array of desired percentages (in descending order) 
 
@@ -729,7 +729,11 @@ def main(args):
         tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
 
     if noplot:
-        return tarr, x1, x2, imgs 
+        if ctrace:
+            return tarr, x1, x2, imgs, imgc
+        else: 
+            return tarr, x1, x2, imgs 
+        quit() 
 
     # get rays 
     if rtrace:
@@ -760,14 +764,14 @@ def main(args):
     # Handle plotting everything else 
     else:
         # get face centered meshgrid
-        x1f, x2f           = get_fc(cart) 
+        x1f, x2f           = get_fc(cart,params) 
         # get cartesian version of face centered meshgrid
         if cart:
             x1cf, x2cf = x1f, x2f
         else:
             x1cf, x2cf = x1f*np.cos(x2f), x1f*np.sin(x2f) 
         # get cartesian version of 'cell centered' meshgrid
-        x1c, x2c           = get_fc2(cart)
+        x1c, x2c           = get_fc2(cart,params)
         if cart:
             x1cc, x2cc = x1c, x2c
         else:

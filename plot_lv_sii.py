@@ -224,7 +224,7 @@ def factors(n):
 # gets the levels for the contour tracing of the cloud
 # This returns levels that draw contours encompassing given
 # percentages of the total intensity of emission   
-def get_levels(img,pcts):
+def get_levels(img,pcts=np.array([0.9,0.5])):
     # img : array of cloud mass 
     # pcts: array of desired percentages (in descending order) 
 
@@ -258,8 +258,8 @@ def get_args():
     parser.add_argument("--iani", dest="iani",nargs=2,required=False,
                         default=[0,0],type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
-    parser.add_argument("--qminmax", dest="qminmax",nargs=2,required=False,
-                        default=[-5,5],type=float,
+    parser.add_argument("--qminmax", dest="qminmax",nargs='+',required=False,
+                        default=-1,type=float,
                         help="Min/max value for imshow")
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=[0],
                         nargs='+',
@@ -322,10 +322,10 @@ def main(args):
     prec  = 32
     
     # parsing arguments            
-    quant  = args.quant
-    anim   = args.anim
-    iani   = args.iani
-    qmin, qmax = args.qminmax[0], args.qminmax[1] 
+    quant   = args.quant
+    anim    = args.anim
+    iani    = args.iani
+    qminmax = args.qminmax 
     ifrm   = args.ifrm
     save   = args.save
     nolog  = args.nolog
@@ -340,16 +340,29 @@ def main(args):
     
     # Get panel flag 
     pflag = True if np.size(ifrm) > 1 else False 
+    # Get qminmax flag
+    qflag = True if np.size(qminmax) > 1 else False 
     if np.size(ifrm) == 1: ifrm = ifrm[0] 
 
     # Get lv files 
     if quant == 'lv' or quant == 'lvc':
         files = get_files(athdir,'id0','*.lv.*')
+        if qflag:
+            qmin = qminmax[0]
+            qmax = qminmax[1]
+        else:
+            qmin = -5
+            qmax =  5
+
     elif quant == 'sii':
         files = get_files(athdir,'id0','*.'+quant+'.*')
         # Change default range for sii files
-        if (qmin,qmax) == (-5,5):
-            (qmin,qmax) = (-15,-5)
+        if qflag:
+            qmin = qminmax[0]
+            qmax = qminmax[1]
+        else:
+            qmin = -15
+            qmax = -5
     else: 
         print('[main]: quant not understood, aborting...\n')
         quit()
