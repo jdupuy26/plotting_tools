@@ -296,27 +296,10 @@ def init(quant, files, **kwargs):
     return tarr, data
 
 #===============================
-# main()
-def main():
-    # Get input file
-    athdir = os.getcwd()+'/'
-    athin = [fname for fname in os.listdir(athdir) if fname.startswith("athinput")][0]
-    # Read input file
-    base, params = read_athinput.readath(athdir+athin) 
-    # Set precision
-    prec  = 32
-
-    # Set Nang and nx1_dom
-    Nang, nx1_dom = int(params[0].Nang), int(params[0].nx1)
-
-    # Get otf files 
-    otf_files = get_files(athdir,'id0','*.otf.*')
-    # Sort them
-    otf_files.sort()
-    
-    n   = len(otf_files)
-
-    # Read in system arguments
+# \func get_args()
+# this function parses CMD line args
+def get_args():
+    # Read in system arguments 
     parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter) 
     parser.add_argument("quant",type=str,
                         help="Plotting options:\n"
@@ -379,9 +362,38 @@ def main():
                         help="Switch to do interpolation on <A1>")
     parser.add_argument("--fmt", dest="fmt",type=str,default='eps',
                         help="Type of figure to save, only applies to single frames, default: eps") 
+    parser.add_argument("--noplot",dest="noplot",action='store_true',
+                        default=False, required=False,
+                        help="Switch to return only the data\n"
+                             "To be used if this file is imported from another file\n")
 
+    return parser.parse_args()
+
+
+
+#===============================
+# main()
+def main(args):
+    # Get input file
+    athdir = os.getcwd()+'/'
+    athin = [fname for fname in os.listdir(athdir) if fname.startswith("athinput")][0]
+    # Read input file
+    base, params = read_athinput.readath(athdir+athin) 
+    # Set precision
+    prec  = 32
+
+    # Set Nang and nx1_dom
+    Nang, nx1_dom = int(params[0].Nang), int(params[0].nx1)
+
+    # Get otf files 
+    otf_files = get_files(athdir,'id0','*.otf.*')
+    # Sort them
+    otf_files.sort()
+    # Get number of otf files  
+    n   = len(otf_files)
+
+    
     # parsing arguments            
-    args  = parser.parse_args()
     quant = args.quant
     iang  = args.iang
     anim  = args.anim
@@ -395,6 +407,7 @@ def main():
     comp  = args.comp
     interp= args.interp
     fmt   = args.fmt
+    noplot= args.noplot
 
     if   fit == 'exp':
         fit_func = exp_fit
@@ -418,9 +431,11 @@ def main():
     if cmap and (quant != 'A1' and quant != 'A2'):
         print("[main]: colormaps must be plotted using quant A1 or A2")
         quit()
-    if ifrm > (n-1):
-        print("[main]: frame out of range of simulation!")
-        quit()
+
+    if not noplot:
+        if ifrm > (n-1):
+            print("[main]: frame out of range of simulation!")
+            quit()
 
     # Get the data
     tarr, data = init(quant, otf_files, prec=32, 
@@ -428,6 +443,11 @@ def main():
     
     print("       thvcs = %1.3e [Myr]\n"
           "       thvce = %1.3e [Myr]\n" % (params[0].thvcs, params[0].thvce) ) 
+
+
+    if noplot:
+        return tarr, data
+        quit() 
 
     # Check if comparing to control simulation
     if comp:
@@ -733,5 +753,8 @@ def main():
     else:
         plt.show()
     #=============================================================
-                
-main()
+
+if __name__ == '__main__':
+    # plot_otf.py called from cmd line
+    args = get_args()
+    main(args) 
