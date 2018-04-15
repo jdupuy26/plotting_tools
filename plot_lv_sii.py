@@ -88,7 +88,7 @@ def get_data(file,**kwargs):
             iline = kwargs[key]
 
 
-    if quant == 'lv':
+    if quant == 'lv' or quant=='asym':
         t, x, y, lv, lvc = read_lv(file,prec, **kwargs)
         data = lv
     elif quant == 'lvc':
@@ -205,10 +205,16 @@ def init(quant, files, myfrms,  **kwargs):
         t, x, y, data = get_data(files[iff], quant=quant,**kwargs)
         # Set time dependent data 
         yvals.append(y)
-        grdt.append(data)
+        # asym measure
+        if quant == 'asym':
+            nrays = len(x)
+            nrays2 = nrays/2 
+            grdt.append( np.sum(data[:,0:nrays2]) / np.sum(data[:,nrays2:]) )
+        else:
+            grdt.append(data)
         tarr[i] = t
         i += 1    
-
+    
     return tarr, x, yvals, grdt 
 
 #==========================================================
@@ -363,6 +369,10 @@ def main(args):
         else:
             qmin = -15
             qmax = -5
+    elif quant == 'asym':
+        files = get_files(athdir,'id0','*.lv.*')
+        ifrm
+        
     else: 
         print('[main]: quant not understood, aborting...\n')
         quit()
@@ -381,6 +391,8 @@ def main(args):
         myfrms = range(iani[0],iani[1])
     elif pflag: 
         myfrms = ifrm
+    elif quant == 'asym':
+        myfrms = range(0,n) 
     else:
         myfrms = [ifrm] 
 
@@ -398,6 +410,9 @@ def main(args):
     if smooth and quant =='lvc':
         print("[main]: No need to smooth lvc diagrams")
         quit()
+    if not noplot and quant == 'asym':
+        print("[main]: Asymmetry measure cannot be plotted from this file!")
+        quit() 
     
     # Get the data
     tarr, x, y, data = init(quant,files,myfrms,prec=prec,iline=iline,old=old,ipos=ipos)
@@ -411,6 +426,15 @@ def main(args):
             lw = 1.
         else: 
             lw = 2.
+
+    if noplot:
+        if quant == 'asym':
+            return tarr, data # (l,v) asymmetry measure (sum of intensity divided on both sides)
+        elif ctrace:
+            return tarr, x, y, data, cloud
+        else: 
+            return tarr, x, y, data 
+        quit() 
         
         # Get labels 
     title = get_title(quant,nolog,iline=iline)
@@ -426,12 +450,7 @@ def main(args):
         print("[main]: Interpolation is on! Using %s to"
               " interpolate\n" %( interp ) )
 
-    if noplot:
-        if ctrace:
-            return tarr, x, y, data, cloud
-        else: 
-            return tarr, x, y, data 
-        quit() 
+
 
     if not pflag:
         # Open figure
