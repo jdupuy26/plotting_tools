@@ -6,6 +6,7 @@ import subprocess as sbp
 import argparse
 from argparse import RawTextHelpFormatter
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 # Import from correct directory
 import socket as s
 comp = s.gethostname()
@@ -23,6 +24,7 @@ else:
 
 import plot_sims as ps
 import plot_lv_sii as plv
+import plot_otf as potf
 
 #=====================================================
 #
@@ -134,6 +136,7 @@ def get_args():
                         default=True, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
+    # Arguments for (l,v) and sii plotting
     parser.add_argument("--interp",dest="interp",type=str,default='None',
                         help="What type of interpolation for imshow?\n" 
                              "Default is 'None', cf. \n"
@@ -160,6 +163,29 @@ def get_args():
                              "1: Position is from Andromeda @ angle 0  deg\n"
                              "2: Position is from Andromeda @ angle 45 deg\n"
                              "3: Position is from Andromeda @ angle 90 deg\n")
+    # Arguments for otf plotting 
+    parser.add_argument("--rmnmx", dest="rmnmx",nargs=2,required=False,
+                    default=[5000., 13000.],type=float,
+                    help="Average A1 from rmn to rmx") 
+    parser.add_argument("--iang", dest="iang",type=int, default=0,
+                    required=False,
+                    help="Angle to plot if using vrot:\n"
+                         "  [0-(Nang-1)]: index that corresponds to [0-305 deg]\n"
+                         " -1: All angles are plotted\n")
+    parser.add_argument("--cmap", dest="cmap",action='store_true',
+                        default=False,
+                        help="Switch to create a colormap for A1 & A2")
+    parser.add_argument("--wire", dest='wire',action='store_true',
+                        default=False,
+                        help="Switch to make a 3d wireframe plot")
+    parser.add_argument("--fit", dest="fit",type=str,
+                        default='None',
+                        help="Switch to do fit for <A1> perturbations")
+    parser.add_argument("--ctrl", dest="ctrl",type=str,
+                        default='None',
+                        help="String to compare measurement to control files:\n"
+                             "  sub: Subtract control from sim and take abs value\n"
+                             "  div: Divide sim by control")
     # Arguments for selecting simulations to plot
     parser.add_argument("--rpos",dest="rpos",type=str, default=['5500'],
                         required=False,nargs='+',
@@ -230,12 +256,30 @@ def get_data(args, sims):
     # Parse relevant arguments for the data
     quant = args.quant
     # Select proper plotting file based on quant
-    if quant=='lv' or quant=='lvc' or quant=='sii':
-        lvflag = True
-        reader = plv
+
+    # Using lv
+    if (quant=='lv' or   quant=='lvc' or 
+        quant=='sii' or quant=='asym'):
+
+        if quant=='asym':
+            lvflag = False
+        else:
+            lvflag  = True
+        otfflag = False
+        reader  = plv
+    # Using otf
+    elif (quant=='<A1>' or quant=='<A2>' or
+          quant=='LoR'  or quant=='RoL'  or
+          quant=='mcR'  or quant=='mcL'):
+
+        lvflag  = False
+        otfflag = True
+        reader  = potf
+    # Using sims
     else: 
-        lvflag = False 
-        reader = ps
+        lvflag  = False 
+        otfflag = False
+        reader  = ps
 
     # Create data list 
     data_list = []
@@ -248,9 +292,9 @@ def get_data(args, sims):
         except OSError:
             print('[get_data]: Sim files not present for %s!' %(s))
 
-    return lvflag, data_list  
+    return lvflag, otfflag, data_list  
 
-def make_plots(args,lvflag,data,sims):
+def make_plots(args,lvflag,otfflag,data,sims):
     # Specify the control simulation directory
     ctrl_path = '/srv/scratch/jdupuy26/jid/jid_adiabatic'\
                 '/longevity_jid/m0.0/te325/rc500/r10000/a0.0'\
@@ -283,6 +327,7 @@ def make_plots(args,lvflag,data,sims):
     mhvc     = args.mc
     thvce    = args.te
 
+    # Determine proper labels 
     if len(rpos) > 1:
         var  = rpos
         pstr  = '$r_{\\rm pos,0}$ = '
@@ -317,24 +362,28 @@ def make_plots(args,lvflag,data,sims):
     #-----------------------------------------#
 
     #-----------------------------------------#
-    # Determine the size of the panel
-    fact = factors(len(data))
-    if len(fact) == 2:
-        nxp = np.max(fact)
-        nyp = np.min(fact) 
-    else:
-        nxp = np.max(fact[1:-1])
-        nyp = np.min(fact[1:-1])
-    ratio = float(nxp)/float(nyp)
-    fsize = (ratio*7.,7.)
-    # Create figure object
-    fig, axes = plt.subplots(nyp,nxp,sharex='col', sharey='row',facecolor='white',
-                             figsize=fsize) 
+    # Create the proper figure
+    if otfflag or quant == 'asym':
+        fig = plt.figure(figsize=(10.0,7.0),facecolor='white')
+    else:   
+        # Determine the size of the panel
+        fact = factors(len(data))
+        if len(fact) == 2:
+            nxp = np.max(fact)
+            nyp = np.min(fact) 
+        else:
+            nxp = np.max(fact[1:-1])
+            nyp = np.min(fact[1:-1])
+        ratio = float(nxp)/float(nyp)
+        fsize = (ratio*7.,7.)
+        # Create figure object
+        fig, axes = plt.subplots(nyp,nxp,sharex='col', sharey='row',facecolor='white',
+                                 figsize=fsize) 
 
-    fig.subplots_adjust(hspace=0.1, wspace=0.1)
-    # define the colorbar
-    fig.subplots_adjust(top=0.8) 
-    cax = fig.add_axes([0.16,0.85,0.7,0.02])
+        fig.subplots_adjust(hspace=0.1, wspace=0.1)
+        # define the colorbar
+        fig.subplots_adjust(top=0.8) 
+        cax = fig.add_axes([0.16,0.85,0.7,0.02])
     #-----------------------------------------#
 
     
@@ -415,6 +464,40 @@ def make_plots(args,lvflag,data,sims):
             cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
             cax.xaxis.set_ticks_position('bottom') 
             cb.ax.set_title(title + ' @ t = %1.1f [Myr]' % (tarr[iff]) ) 
+
+    # Now handle otf figures
+    elif otfflag or quant=='asym': 
+        # Define labels 
+        if quant == 'asym':
+            ylab = '(l,v) asymmetry measure'
+            step = 1
+        else:
+            ylab = potf.get_ylabel(quant)
+            step = 5
+        xlab = 't [Myr]' 
+        # Define cutoff (if plotting '<A1>') 
+        cut  = 0.05
+        # Define plotting markers
+        #colors = ['b-','m-','k-','g-']
+        mycmap = mpl.cm.get_cmap('viridis')
+        colors = [ mycmap(x) for x in np.linspace(0.0, 0.8, 4)]
+        lines  = ['-','-','-','-']
+        markers= ['s','p','^','o']
+
+        # Put labels on plot
+        plt.xlabel(xlab)
+        plt.ylabel(ylab)
+
+        for (dat, v, c, l, m) in zip(data, var, colors, lines, markers): 
+            tarr, vals = dat 
+            plt.plot(tarr[::step], vals[::step], linestyle=l, color = c, label= '%s%s%s' % (pstr,v, punit),
+                     linewidth=2., marker=m, markersize=7.)  
+        
+        if quant == '<A1>':
+            # Plot cutoff value
+            plt.plot(tarr, cut*np.ones(len(tarr)), 'r--', lw=3.)
+        #plt.ylim(0, 0.3)
+        plt.legend(loc=2) 
     
     # Now handle plotting simulations 
     else: 
@@ -474,8 +557,6 @@ def make_plots(args,lvflag,data,sims):
             cax.xaxis.set_ticks_position('bottom') 
             cb.ax.set_title(clab + ' @ t = %1.1f [Myr]' %(tarr[iff]) ) 
 
-
-        
     return 
 
 def main():
@@ -485,11 +566,10 @@ def main():
     # Now based off of simulation selection, get relevant directories 
     sims = get_sims(args, cwd)  
     # Now get the data for each simulation 
-    lvflag, data = get_data(args,sims)
+    lvflag, otfflag, data = get_data(args,sims)
     # Now construct the plots 
-    make_plots(args,lvflag,data,sims) 
+    make_plots(args,lvflag,otfflag,data,sims) 
     plt.show() 
-
 
     return 
 
