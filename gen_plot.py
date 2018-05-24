@@ -12,6 +12,8 @@ from matplotlib.projections import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 from mpl_toolkits.axisartist.grid_finder import DictFormatter
 from matplotlib import _cntr as cntr 
+# scipy
+from scipy.interpolate import interp2d 
 
 import argparse
 from argparse import RawTextHelpFormatter
@@ -120,7 +122,7 @@ def get_athinput(cwd=-1):
 
 #\func get_quant 
 # gets quantity 
-def get_quant(file,quant,units,precision=64):
+def get_quant(file,quant,units,precision=32):
     #read in binary file
     nx1,nx2,nx3,x1,x2,x3,\
     d,M1,M2,M3,e,ie,s,\
@@ -155,14 +157,17 @@ def get_quant(file,quant,units,precision=64):
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
                   'v1':M1/d,'v2':M2/d,'v3':M3/d,
                   'M1':M1,'M2':M2,'M3':M3,
-                  'V':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
+                  'v':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
                   'cs': np.sqrt(gamm1*ie/d),
+                  'phi':phi,
                   'dcl':dcl, 'M1cl':M1cl, 'M2cl':M2cl, 'M3cl':M3cl,
+                  'Mcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.), 
                   'v1cl':M1cl/dcl,'v2cl':M2cl/dcl,'v3cl':M3cl/dcl,
+                  'vcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.)/dcl,
                   'E11':E11, 'E22':E22, 'E33':E33, 'E12':E12, 'E13':E13, 'E23':E23, 
                   'P11':E11-(M1cl)*(M1cl/dcl),'P22':E22-(M2cl)*(M2cl/dcl),
                   'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
-                  'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)} 
+                  'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
 
     return t, x1, x2, x3, all_quants[quant] 
 
@@ -289,14 +294,16 @@ def get_labels(quant,dim,log=False):
                   'M':'M$_{tot}$',
                   'v1':'v$_1$','v2':'v$_2$','v3':'v$_3$',
                   'M1':'M$_1$','M2':'M$_2$','M3':'M$_3$',
+                  'phi':'$\Phi_G$',
                   'cs':'c$_s$', 
-                  'V':'V$_{tot}$',
+                  'v':'v$_{tot}$',
                   's1':'$\Sigma_c$','s1c':'$M_c (R < 0.5 \; {\\rm [kpc])}/M_c$',
                   'jl':'$\lambda_J$','vlos':'$v_{\\rm los}$',
                     # Collisionless variables 
                   'dcl':'$\\rho_{\\rm cl}$', 
                   'v1cl':'v$_{1,\\rm cl}$','v2cl':'v$_{2,\\rm cl}$',
                   'v3cl':'v$_{3,\\rm cl}$','M1cl':'M$_{1,\\rm cl}$',
+                  'vcl':'v$_{\\rm cl}$','Mcl':'M$_{\\rm cl}$', 
                   'M2cl':'M$_{2,\\rm cl}$','M3cl':'M$_{3,\\rm cl}$',
                   'P11':'P$_{11}$','P22':'P$_{22}$','P33':'P$_{33}$',
                   'P12':'P$_{12}$','P23':'P$_{23}$','P13':'P$_{13}$',
@@ -355,7 +362,7 @@ def get_args():
                              " Note: by entering multiple integers, will make\n"
                              " panel plots for each ifrm")
     parser.add_argument("--mnmx",dest="mnmx", type=float,nargs=2,
-                        required=False,default=[-15.0,15.0],
+                        required=False,default=[-np.pi,np.pi],
                         help="Plotting range in x and y\n"
                              "Note: assumes x, y range are equivalent")
     parser.add_argument("--save", dest="save",action='store_true',
@@ -377,13 +384,15 @@ def get_args():
                         default=False, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
+    parser.add_argument("--slice1d",dest="slice1d",action='store_true',
+                        default=False, required=False,
+                        help="Switch to take 1D slice of 2D array\n")
     return parser.parse_args() 
     
  
 
 #------------- MAIN FUNCTION ------------------------#
 def main(args):
-
     ctable = 'magma'
     plt.rcParams['image.cmap'] = ctable
     base, params = get_athinput() 
@@ -403,11 +412,14 @@ def main(args):
     fmt      = args.fmt
     vvec     = args.vvec
     noplot   = args.noplot
+    slice1d  = args.slice1d
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
     # Get panel flag
     pflag = True if np.size(ifrm) > 1 else False 
+    # Get mnmx flag
+    mnmxflag = False if mxx == np.pi else True  
     
     if np.size(ifrm) == 1: ifrm = ifrm[0]
     
@@ -445,25 +457,167 @@ def main(args):
         flag1d = True 
         dim    = 1
 
+    # If slice1d change flag
+    if slice1d:
+        flag2d = False
+        flag1d = True 
+
     # Determine labels 
     xlab, ylab, clab = get_labels(quant,dim,log)
-    
 
     # Now plot the data 
     fig = plt.figure(figsize=(7.5,5.5),facecolor='white') 
     ax1 = fig.add_subplot(111) 
 
     if flag1d: 
+        if slice1d:
+            imgs = imgs[:,0,:,:]
+            # Take slice 
+            vals = []
+            for j in range(len(imgs)):
+                vals.append(np.array([imgs[j,i,i] for i in range(len(x1))]))
+            imgs = vals 
         # Get rid of unnecessary dimensions 
-        imgs = imgs[:,0,0,:] 
-        # plot 
-        ax1.plot(x1, imgs[0],'.')  
-        ax1.set_xlabel(xlab)
-        ax1.set_ylabel(clab)
-        ax1.set_title('t = %1.2f' % (tarr[0]) ) 
+        else:
+         imgs = imgs[:,0,0,:] 
 
+        # Handle animation
+        if anim:
+            if qflag:
+                qmin, qmax = qminmax[0], qminmax[1]
+            else:
+                qmin, qmax = np.min(imgs), np.max(imgs) 
+            
+            # Set labels 
+            ax1.set_title('t = %1.2f' % (tarr[0]) ) 
+            ax1.set_xlabel(xlab)
+            ax1.set_ylabel(clab) 
+            # Plot first frame 
+            ax1.plot(x1, imgs[0], '.')
+            
+            def animate(ifrm):
+                # Clear figure
+                ax1.cla()
+                # Set title & labels 
+                ax1.set_title('t = %1.2f' % (tarr[ifrm]) )
+                ax1.set_xlabel(xlab)
+                ax1.set_ylabel(clab) 
+                # Set xmin, xmax 
+                if mnmxflag:
+                    ax1.set_xlim(mnx, mxx)
+                #ax1.set_ylim(qmin,qmax)
+                # Now plot
+                ax1.plot(x1, imgs[ifrm],'.')
+                return
+            ani = animation.FuncAnimation(fig, animate, range(len(myfrms)),
+                                          repeat=False) 
 
-    plt.show() 
+        # Handle plotting a single frame 
+        else:
+            # plot 
+            ax1.plot(x1, imgs[0],'.')  
+            ax1.set_xlabel(xlab)
+            ax1.set_ylabel(clab)
+            ax1.set_title('t = %1.2f' % (tarr[0]) ) 
+    
+    elif flag2d:
+        # Get extent of grid 
+        mnx1, mxx1, mnx2, mxx2 = ( np.min(x1), np.max(x1),
+                                   np.min(x2), np.max(x2) ) 
+        dx1, dx2 = x1[1]-x1[0], x2[1]-x2[0]
+
+        mnx1 -= 0.5*dx1; mxx1 += 0.5*dx1
+        mnx2 -= 0.5*dx2; mxx2 += 0.5*dx2
+        # Determine colorbar 
+        div = make_axes_locatable(ax1)
+        cax = div.append_axes('right', '5%', '5%') 
+        
+        # Get rid of unnecessary dimensions 
+        imgs = imgs[:,0,:,:] 
+
+        if qflag:
+            qmin, qmax = qminmax[0], qminmax[1]
+        else:
+            qmin, qmax = np.min(imgs), np.max(imgs) 
+    
+        # Handle animation
+        if anim: 
+            ax1.set_title('t = %1.2f' %(tarr[0]) )
+            im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
+                                       vmin=qmin,vmax=qmax, origin='lower')
+            im.set_rasterized(True) 
+            cbar = fig.colorbar(im,label=clab,cax=cax) 
+
+            def animate(ifrm):
+                # Clear figure 
+                ax1.cla()
+                cax.cla()
+                
+                # Set title 
+                ax1.set_title('t = %1.2f' %(tarr[ifrm]) )
+                # Plot 
+                im   = ax1.imshow(imgs[ifrm], extent=(mnx1, mxx1, mnx2, mxx2),
+                                              vmin=qmin,vmax=qmax, origin='lower')
+                im.set_rasterized(True) 
+                # Set labels for x,y
+                ax1.set_xlabel(xlab)
+                ax1.set_ylabel(ylab)
+                # Set xmin, xmax
+                if mnmxflag:
+                    ax1.set_xlim(mnx,mxx)
+                    ax1.set_ylim(mnx,mxx)
+                else:
+                    ax1.set_xlim(mnx1,mxx1)
+                    ax1.set_ylim(mnx2,mxx2) 
+
+                # Set aspect ratio
+                ax1.set_aspect('equal')
+                # Set colorbar
+                cbar = fig.colorbar(im,label=clab, cax=cax)
+                return   
+
+            ani = animation.FuncAnimation(fig, animate, range(len(myfrms)),
+                                          repeat=False)
+        # Handle a single frame 
+        else:
+            # For the shock problem interpolate along y=x 
+            #imgs = interp2d(x1,x2,imgs[0]) 
+            #vals = np.array([ imgs[0,i,i] for i in range(len(x1)) ])  
+            # plot 
+            #ax1.plot(x1, vals,'.') 
+            
+            ax1.set_xlabel(xlab)
+            ax1.set_ylabel(ylab)
+
+            ax1.set_title('t = %1.2f' %(tarr[0]) )
+            im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
+                                       vmin=qmin,vmax=qmax, origin='lower')
+            im.set_rasterized(True) 
+            cbar = fig.colorbar(im,label=clab,cax=cax) 
+
+            
+
+    if save:
+        #mydir  = '/srv/analysis/jdupuy26/figures/'
+        mydir = os.getcwd()+'/'
+        # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
+        #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
+        #myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
+        if anim:
+            print("[main]: Saving animation...")
+            if ctrace:
+                ani.save(mydir+myname+'_'+base+'_'+quant+'_ctrace.gif',fps=20.
+                         ,writer='imagemagick')
+            else:
+                ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=20.
+                         ,writer='imagemagick')
+
+        else:
+            print("[main]: Saving frame...")
+            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.'+fmt, format=fmt,bbox_inches='tight')
+    else:
+        plt.show() 
+
         
 if __name__ == '__main__':
    # If this file is called from cmd line 
