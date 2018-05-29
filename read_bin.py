@@ -18,7 +18,8 @@ import matplotlib.pyplot as plt
 #         nx,ny,nz,x,y,z,\
 #         d,Mx,My,Mz,e,s,\
 #         bx,by,bz,phi,\
-#         gamm1,cs,t,dt,nscalars   =  read_bin.read_bin('test.bin')
+#         gamm1,cs,t,dt,nscalars,\
+#         clesshd              =  read_bin.read_bin('test.bin')
 #
 #  WARNING: This is compatible with the dump_binary.c file in the
 #           git directory. To use with the default dump_binary file
@@ -28,6 +29,7 @@ import matplotlib.pyplot as plt
 #  Author: Chris Frazer
 #          UNC Chapel Hill
 #  Modified: (9/15/17) returns internal energy
+#            (5/14/18) returns collisionless variables, if present 
 #
 #=====================================================
 
@@ -38,7 +40,7 @@ def read_bin(fl,precision):
     try: 
         file = open(fl,'rb')
     except:
-        print 'read_athena_bin: failed to supply file input'
+        print '[read_bin]: failed to supply file input'
         quit()
 
 
@@ -47,9 +49,8 @@ def read_bin(fl,precision):
     elif precision == 64:
         prec=np.float64
     else:
-        print 'read_athena_bin: failed to assign appropriate precision'
+        print '[read_bin]: failed to assign appropriate precision'
         quit()
-
 
     #check location of EOF
     file.seek(0,2)
@@ -93,9 +94,22 @@ def read_bin(fl,precision):
     by  = np.zeros(shape)
     bz  = np.zeros(shape)
     phi = np.zeros(shape)
-    ie  = np.zeros(shape)
     P   = np.zeros(shape)
     
+    # Possible additional variables 
+        # allocate array for internal energy
+    ie  = np.zeros(shape)
+        # allocate arrays for collisionless fluid 
+    dcl  = np.zeros(shape)
+    M1cl = np.zeros(shape)
+    M2cl = np.zeros(shape)
+    M3cl = np.zeros(shape)
+    E11  = np.zeros(shape)
+    E22  = np.zeros(shape)
+    E33  = np.zeros(shape) 
+    E12  = np.zeros(shape)
+    E13  = np.zeros(shape)
+    E23  = np.zeros(shape) 
 
     #read in arrays
     d  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
@@ -103,7 +117,9 @@ def read_bin(fl,precision):
     My = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     Mz = np.fromfile(file,dtype=prec,count=count).reshape(shape)
 
-    a = nvar-nscalars-naddvar
+    a = nvar-nscalars # modified to get rid of naddvar 
+
+
     if a == 5 or a == 8:   #not Barotropic
         e  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     if a == 7 or a == 8:   #includes Magnetic fields
@@ -113,14 +129,48 @@ def read_bin(fl,precision):
     if nscalars > 0:
         for i in range(0,nscalars):
             s[:,:,:,i]  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-    if naddvar > 0:
-        ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-    
+   
+    # Read in potential from self-gravity
     if ngrav > 0:
-        phi = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        phi = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
+
+    if naddvar == 1:
+        # Read in internal energy
+        ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+
+    elif naddvar == 10:
+        # Read in collisionless variables 
+        dcl  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        M1cl = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
+        M2cl = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        M3cl = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E11  = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
+        E22  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E33  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E12  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E13  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E23  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+
+    elif naddvar > 10:
+        # Read in internal energy
+        ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        # Read in collisionless variables 
+        dcl  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        M1cl = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
+        M2cl = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        M3cl = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E11  = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
+        E22  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E33  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E12  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E13  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        E23  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+
+    # Package the collisionless data in a tuple 
+    clesshd = (dcl, M1cl, M2cl, M3cl, E11, E22, E33, E12, E13, E23) 
                          
     if gamm1 != 0:
-        if naddvar > 0:
+        if naddvar == 1:
             P = gamm1*ie
         else:
             P = gamm1*(e-0.5*(Mx**2 + My**2 + Mz**2))/d 
@@ -132,7 +182,8 @@ def read_bin(fl,precision):
     return nx,ny,nz,x,y,z,\
             d,Mx,My,Mz,e,ie,s,\
             bx,by,bz,phi,\
-            gamm1,cs,t,dt,nscalars
+            gamm1,cs,t,dt,nscalars,\
+            clesshd 
 
 #=====================================================
 #
