@@ -169,6 +169,11 @@ def get_quant(file,quant,units,precision=32):
                   'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
                   'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
 
+    all_quants['detP'] = ( all_quants['P11']*all_quants['P22'] -
+                           all_quants['P12']*all_quants['P12'] )
+    all_quants['detE'] = ( all_quants['E11']*all_quants['E22'] -
+                           all_quants['E12']*all_quants['E12'] )
+
     return t, x1, x2, x3, all_quants[quant] 
 
 #\func get_stitch
@@ -309,7 +314,7 @@ def get_labels(quant,dim,log=False):
                   'P12':'P$_{12}$','P23':'P$_{23}$','P13':'P$_{13}$',
                   'E11':'E$_{11}$','E22':'E$_{22}$','E33':'P$_{33}$',
                   'E12':'E$_{12}$','E23':'E$_{23}$','E13':'P$_{13}$',
-                  }
+                  'detP':'det(P$_{ij}$', 'detE':'det(E$_{ij}$'}
 
     # Define dictionary for units 
     units = ' [comp units]' 
@@ -384,9 +389,12 @@ def get_args():
                         default=False, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
-    parser.add_argument("--slice1d",dest="slice1d",action='store_true',
+    parser.add_argument("--sliced1d",dest="sliced1d",action='store_true',
                         default=False, required=False,
-                        help="Switch to take 1D slice of 2D array\n")
+                        help="Switch to take 1D slice of 2D array along DIAGONAL\n")
+    parser.add_argument("--slicel1d",dest="slicel1d",action='store_true',
+                        default=False, required=False,
+                        help="Switch to take 1D slice of 2D array along a line\n")
     return parser.parse_args() 
     
  
@@ -412,7 +420,8 @@ def main(args):
     fmt      = args.fmt
     vvec     = args.vvec
     noplot   = args.noplot
-    slice1d  = args.slice1d
+    sliced1d = args.sliced1d
+    slicel1d = args.slicel1d
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -458,7 +467,7 @@ def main(args):
         dim    = 1
 
     # If slice1d change flag
-    if slice1d:
+    if sliced1d or slicel1d:
         flag2d = False
         flag1d = True 
 
@@ -470,16 +479,29 @@ def main(args):
     ax1 = fig.add_subplot(111) 
 
     if flag1d: 
-        if slice1d:
+        if sliced1d:
             imgs = imgs[:,0,:,:]
             # Take slice 
             vals = []
             for j in range(len(imgs)):
                 vals.append(np.array([imgs[j,i,i] for i in range(len(x1))]))
             imgs = vals 
+            # Get distance along diagonal 
+            rad   = np.sqrt(x1**2. + x2**2.) 
+            rad[x1 < 0] = -rad[x1 < 0] 
+            x1    = rad.copy() 
+
+        elif slicel1d:
+            imgs = imgs[:,0,:,:]
+            # Take slice 
+            vals = []
+            for j in range(len(imgs)):
+                vals.append(np.array([imgs[j,0,i] for i in range(len(x1))]))
+            imgs = vals 
+            
         # Get rid of unnecessary dimensions 
         else:
-         imgs = imgs[:,0,0,:] 
+            imgs = imgs[:,0,0,:] 
 
         # Handle animation
         if anim:
@@ -603,6 +625,7 @@ def main(args):
         # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
         #myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
         #myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
+        myname = '' 
         if anim:
             print("[main]: Saving animation...")
             if ctrace:
