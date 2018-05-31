@@ -593,7 +593,8 @@ def main(args):
         if anim: 
             ax1.set_title('t = %1.2f' %(tarr[0]) )
             im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
-                                       vmin=qmin,vmax=qmax, origin='lower')
+                                       vmin=qmin,vmax=qmax, origin='lower',
+                                       interpolation='None')
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
 
@@ -606,7 +607,8 @@ def main(args):
                 ax1.set_title('t = %1.2f' %(tarr[ifrm]) )
                 # Plot 
                 im   = ax1.imshow(imgs[ifrm], extent=(mnx1, mxx1, mnx2, mxx2),
-                                              vmin=qmin,vmax=qmax, origin='lower')
+                                              vmin=qmin,vmax=qmax, origin='lower',
+                                              interpolation='None')
                 im.set_rasterized(True) 
                 # Set labels for x,y
                 ax1.set_xlabel(xlab)
@@ -635,7 +637,8 @@ def main(args):
 
             ax1.set_title('t = %1.2f' %(tarr[0]) )
             im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
-                                       vmin=qmin,vmax=qmax, origin='lower')
+                                       vmin=qmin,vmax=qmax, origin='lower',
+                                       interpolation='None')
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
 
