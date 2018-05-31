@@ -18,6 +18,7 @@ from scipy.interpolate import interp2d
 import argparse
 from argparse import RawTextHelpFormatter
 import time as t
+import re
 
 # Import from correct directory
 import socket as s
@@ -36,6 +37,7 @@ else:
 from units_class import * 
 from read_bin import read_bin 
 import read_athinput
+
 
 
 
@@ -65,6 +67,16 @@ import read_athinput
 
 #============ FUNCTIONS ==============================
 
+#\func natural_sort()
+# does natural (i.e. human) sorting of a list 
+# of strings
+# cf. https://stackoverflow.com/questions/4836710/
+#            does-python-have-a-built-in-function-for-string-natural-sort
+def natural_sort(l):
+    convert      = lambda text: int(text) if text.isdigit() else text.lower()
+    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
+    return sorted(l, key = alphanum_key)  
+
 #------------ FUNCTIONS FOR READING DATA -------------#
 #\func get_files()
 # returns dictionary of the form {'id0': bin_files0, 'id1': bin_files1,...}
@@ -73,7 +85,7 @@ def get_files(mydir='./'):
     # Get processor directories 
     proc  = os.walk(mydir).next()[1]
     # Get rid of unwanted directories 
-    proc  = [x for x in proc if 'id' in x]
+    proc  = sorted([x for x in proc if 'id' in x])
    
     # If not using mpi, proc will be empty, so append dummy
     #   directory to it  
@@ -86,7 +98,8 @@ def get_files(mydir='./'):
     nproc = len(proc)
     # Define processor range
     p_no  = range(nproc)
-    
+
+
     # Now create the dictionary 
     pdict = {} 
 
@@ -169,10 +182,18 @@ def get_quant(file,quant,units,precision=32):
                   'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
                   'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
 
-    all_quants['detP'] = ( all_quants['P11']*all_quants['P22'] -
-                           all_quants['P12']*all_quants['P12'] )
-    all_quants['detE'] = ( all_quants['E11']*all_quants['E22'] -
-                           all_quants['E12']*all_quants['E12'] )
+    if quant == 'detP' or quant == 'detE':
+        all_quants['detP'] = ( all_quants['P11']*all_quants['P22'] -
+                               all_quants['P12']*all_quants['P12'] )
+        all_quants['detE'] = ( all_quants['E11']*all_quants['E22'] -
+                               all_quants['E12']*all_quants['E12'] )
+    if quant == 'normP' or quant == 'normE':
+        all_quants['normP'] = np.sqrt( all_quants['P11']**2. + 2.*all_quants['P12']**2. +
+                                       all_quants['P22']**2. + 2.*all_quants['P13']**2. +
+                                       all_quants['P33']**2. + 2.*all_quants['P23']**2. ) 
+        all_quants['normE'] = np.sqrt( all_quants['E11']**2. + 2.*all_quants['E12']**2. +
+                                       all_quants['E22']**2. + 2.*all_quants['E13']**2. +
+                                       all_quants['E33']**2. + 2.*all_quants['E23']**2. )
 
     return t, x1, x2, x3, all_quants[quant] 
 
@@ -216,6 +237,10 @@ def get_stitch(pdict,quant,myfrms,**kwargs):
         ngridx1 = int(params[0].ngridx1)
         ngridx2 = int(params[0].ngridx2) 
         ngridx3 = int(params[0].ngridx3) 
+        if ngridx2 == 0:
+            ngridx2 = 1
+        if ngridx3 == 0:
+            ngridx3 = 1
     else: 
         ngridx1 = 1
         ngridx2 = 1
@@ -240,7 +265,7 @@ def get_stitch(pdict,quant,myfrms,**kwargs):
     x2   = np.zeros(nx2) 
     x3   = np.zeros(nx3) 
 
-    keys = list(pdict.keys()) 
+    keys = natural_sort(list(pdict.keys())) 
 
     # Define processor index
     ip = 0
@@ -253,6 +278,7 @@ def get_stitch(pdict,quant,myfrms,**kwargs):
                 # Define processor key
                 pkey     = keys[ip]  
                 i        = 0            # index for filling arrays
+                
                 for iff in myfrms: 
                     # Get filename
                     fnm      = pkey + '/' + pdict[pkey][iff]
@@ -278,7 +304,7 @@ def get_stitch(pdict,quant,myfrms,**kwargs):
                         v2_arr[i, fac2*npx2:npx2*(1+fac2),
                                   fac1*npx1:npx1*(1+fac1)] = data[3] 
                     i += 1
-            ip += 1
+                ip += 1
 
     if vvec:
         # Convert velocities to vx, vy
@@ -314,7 +340,8 @@ def get_labels(quant,dim,log=False):
                   'P12':'P$_{12}$','P23':'P$_{23}$','P13':'P$_{13}$',
                   'E11':'E$_{11}$','E22':'E$_{22}$','E33':'P$_{33}$',
                   'E12':'E$_{12}$','E23':'E$_{23}$','E13':'P$_{13}$',
-                  'detP':'det(P$_{ij}$', 'detE':'det(E$_{ij}$'}
+                  'detP':'det(P$_{ij}$', 'detE':'det(E$_{ij}$',
+                  'normP':'$|| P_{ij} ||_F$', 'normE':'$|| E_{ij} ||_F$'}
 
     # Define dictionary for units 
     units = ' [comp units]' 
@@ -602,12 +629,7 @@ def main(args):
                                           repeat=False)
         # Handle a single frame 
         else:
-            # For the shock problem interpolate along y=x 
-            #imgs = interp2d(x1,x2,imgs[0]) 
-            #vals = np.array([ imgs[0,i,i] for i in range(len(x1)) ])  
-            # plot 
-            #ax1.plot(x1, vals,'.') 
-            
+            print(np.mean(imgs[0]))  
             ax1.set_xlabel(xlab)
             ax1.set_ylabel(ylab)
 
@@ -628,12 +650,8 @@ def main(args):
         myname = '' 
         if anim:
             print("[main]: Saving animation...")
-            if ctrace:
-                ani.save(mydir+myname+'_'+base+'_'+quant+'_ctrace.gif',fps=20.
-                         ,writer='imagemagick')
-            else:
-                ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=20.
-                         ,writer='imagemagick')
+            ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=30.
+                     ,writer='imagemagick')
 
         else:
             print("[main]: Saving frame...")
