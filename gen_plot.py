@@ -502,9 +502,12 @@ def main(args):
 
     # Change flags for slicing 
     if sliced1d or slicel1d:
-        flag2d = False
-        flag1d = True 
-
+        if flag2d:
+            flag2d = False
+            flag1d = True 
+        if flag3d:
+            flag3d = False
+            flag1d = True 
     if col:
         flag3d = False
         flag2d = True
@@ -526,24 +529,43 @@ def main(args):
 
     if flag1d: 
         if sliced1d:
-            imgs = imgs[:,0,:,:]
-            # Take slice 
-            vals = []
-            for j in range(len(imgs)):
-                vals.append(np.array([imgs[j,i,i] for i in range(len(x1))]))
-            imgs = vals 
-            # Get distance along diagonal 
-            rad   = np.sqrt(x1**2. + x2**2.) 
-            rad[x1 < 0] = -rad[x1 < 0] 
-            x1    = rad.copy() 
+            # Note this assumes nx1 = nx2 = nx3 
+            if dim == 2:
+                imgs = imgs[:,0,:,:]
+                # Take slice 
+                vals = []
+                for j in range(len(imgs)):
+                    vals.append(np.array([imgs[j,i,i] for i in range(len(x1))]))
+                imgs = vals 
+                # Get distance along diagonal 
+                rad   = np.sqrt(x1**2. + x2**2.) 
+                rad[x1 < 0] = -rad[x1 < 0] 
+                x1    = rad.copy() 
+            if dim == 3:
+                # Take slice
+                vals = []
+                for j in range(len(imgs)):
+                    vals.append(np.array([imgs[j,i,i,i] for i in range(len(x1))]))
+                imgs = vals 
+                # Get distance along diagonal
+                rad = np.sqrt(x1**2. + x2**2. + x3**2.)
+                rad[x1 < 0] = -rad[x1 < 0]
+                x1 = rad.copy() 
 
         elif slicel1d:
-            imgs = imgs[:,0,:,:]
-            # Take slice 
-            vals = []
-            for j in range(len(imgs)):
-                vals.append(np.array([imgs[j,0,i] for i in range(len(x1))]))
-            imgs = vals 
+            if dim == 2:
+                imgs = imgs[:,0,:,:]
+                # Take slice 
+                vals = []
+                for j in range(len(imgs)):
+                    vals.append(np.array([imgs[j,nx2/2,i] for i in range(len(x1))]))
+                imgs = vals 
+            if dim == 3:
+                # Take slice
+                vals = []
+                for j in range(len(imgs)):
+                    vals.append(np.array([imgs[j,nx3/2,nx2/2,i] for i in range(len(x1))]))
+                imgs = vals 
             
         # Get rid of unnecessary dimensions 
         else:
