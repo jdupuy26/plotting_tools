@@ -40,9 +40,6 @@ import read_athinput
 
 
 
-
-
-
 #===================================================================
 #
 #  Code: gen_plot.py
@@ -422,6 +419,12 @@ def get_args():
     parser.add_argument("--slicel1d",dest="slicel1d",action='store_true',
                         default=False, required=False,
                         help="Switch to take 1D slice of 2D array along a line\n")
+    parser.add_argument("--col",dest="col",action='store_true',
+                        default=False, required=False,
+                        help="Sum 3d simuations along the z-axis, so they can be viewed as" 
+                             "2d plots\n") 
+    parser.add_argument("--slice",dest="slc",type=int, required=False,
+                        default='-1', help="Slice 3d array into 2d along INT axis\n")
     return parser.parse_args() 
     
  
@@ -449,6 +452,8 @@ def main(args):
     noplot   = args.noplot
     sliced1d = args.sliced1d
     slicel1d = args.slicel1d
+    col      = args.col
+    slc      = args.slc   
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -456,6 +461,8 @@ def main(args):
     pflag = True if np.size(ifrm) > 1 else False 
     # Get mnmx flag
     mnmxflag = False if mxx == np.pi else True  
+    # Get slice flag
+    slice2d  = False if slc == -1 else True 
     
     if np.size(ifrm) == 1: ifrm = ifrm[0]
     
@@ -493,10 +500,17 @@ def main(args):
         flag1d = True 
         dim    = 1
 
-    # If slice1d change flag
+    # Change flags for slicing 
     if sliced1d or slicel1d:
         flag2d = False
         flag1d = True 
+
+    if col:
+        flag3d = False
+        flag2d = True
+    if slice2d:
+        flag3d = False
+        flag2d = True 
 
     # Determine labels 
     xlab, ylab, clab = get_labels(quant,dim,log)
@@ -580,9 +594,15 @@ def main(args):
         # Determine colorbar 
         div = make_axes_locatable(ax1)
         cax = div.append_axes('right', '5%', '5%') 
-        
+
+
         # Get rid of unnecessary dimensions 
-        imgs = imgs[:,0,:,:] 
+        if col:
+            imgs = np.sum(imgs, axis=1) 
+        elif slice2d:
+            imgs = imgs[:,slc,:,:] 
+        else:
+            imgs = imgs[:,0,:,:] 
 
         if qflag:
             qmin, qmax = qminmax[0], qminmax[1]
