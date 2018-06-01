@@ -516,8 +516,13 @@ def main(args):
     xlab, ylab, clab = get_labels(quant,dim,log)
 
     # Now plot the data 
-    fig = plt.figure(figsize=(7.5,5.5),facecolor='white') 
-    ax1 = fig.add_subplot(111) 
+    if flag3d:
+        from mpl_toolkits.mplot3d import Axes3D 
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111, projection='3d')  
+    else:
+        fig = plt.figure(figsize=(7.5,5.5),facecolor='white') 
+        ax1 = fig.add_subplot(111) 
 
     if flag1d: 
         if sliced1d:
@@ -662,6 +667,26 @@ def main(args):
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
 
+    # Handle 3d plotting (using mayavi) 
+    elif flag3d: 
+        # Get extent of grid 
+        mnx1, mxx1, mnx2, mxx2, mnx3, mxx3 = ( np.min(x1), np.max(x1),
+                                               np.min(x2), np.max(x2),
+                                               np.min(x3), np.max(x3) ) 
+        dx1, dx2, dx3 = x1[1]-x1[0], x2[1]-x2[0], x3[1]-x3[0]
+
+        mnx1 -= 0.5*dx1; mxx1 += 0.5*dx1
+        mnx2 -= 0.5*dx2; mxx2 += 0.5*dx2
+        mnx3 -= 0.5*dx3; mxx3 += 0.5*dx3
+
+        x1, x2, x3 = np.meshgrid(x1,x2,x3) 
+        
+
+        ax1.scatter(x1,x2,x3, c=imgs[0].ravel(),cmap=plt.hot()) 
+
+
+    else: 
+        print("[main]: Unsure what to plot  :( ")  
             
 
     if save:
