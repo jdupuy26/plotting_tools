@@ -103,8 +103,9 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
     nx1,nx2,nx3,x1,x2,x3,\
     d,M1,M2,M3,e,ie,s,\
     bx,by,bz,phi, \
-    gamm1,cs,t,dt,nscalars = read_bin(file,precision)
-    
+    gamm1,cs,t,dt,nscalars,\
+    clesshd = read_bin(file,precision)
+
     # Set units
     if   units == 1:
         u = units_CGS()
@@ -166,8 +167,6 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
     elif quant == 'T':
         T      = gamm1*ie*ucgs.esdens/(ucgs.k_b * ( d*ucgs.rhos/ucgs.m_h)) 
 
-    
-
     # Define dictionary for quants
     all_quants = {'E':e, 'ie':ie, 'd':d, 'mcent':d,
                   'n':d*ucgs.rhos/(ucgs.m_h), 'pie':gamm1*ie,
@@ -183,6 +182,7 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
                   'jl':jl,
                   'vlos':vlos}
 
+
     if ctrace:
         return t, x1, x2, all_quants[quant], all_quants['s1']
     else:
@@ -190,19 +190,30 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
 
 #\func get_rays():
 # Constructs rays so that they can be plotted
-def get_rays(x1,x2,params):
+def get_rays(x1,x2,params, ipos=0):
     # x1, x2 are 1d cell centered coordinates 
 
     # First parse athinput (distances in kpc) 
-    R0    = params[0].Rsun/1.e3
-    p0    = params[0].p0*np.pi/180.
     R     = params[0].x1max/1.e3   
+    if ipos == 0:
+        R0    = params[0].Rsun/1.e3
+        p0    = params[0].p0*np.pi/180.
+    elif ipos == 1:
+        R0    = 7.78e2
+        p0    = 0.0
+    elif ipos == 2:
+        R0    = 7.78e2
+        p0    = np.pi/4.
+    else:
+        R0    = 7.78e2
+        p0    = np.pi/2.
 
-    nray       = 30
+    nray       = 12
 
     # Define longitudes of interest
     if R0 < R:
-        longitudes = np.linspace(-np.pi,np.pi,nray)
+        #longitudes = np.linspace(-180.,180.,nray+1)*np.pi/180.
+        longitudes = np.arange(-180,180, 30.)*np.pi/180. 
         #longitudes = np.arange(-np.pi,np.pi,1.0*np.pi/180.)
 
         myray = [] 
@@ -212,7 +223,7 @@ def get_rays(x1,x2,params):
             Lx1   = R0*np.cos(l) + np.sqrt( R**2. - 0.5*R0**2. + 0.5*R0**2.*np.cos(2*l) ) 
             
             x2min = p0
-            if l > 0:
+            if l >= 0:
                 x2max = x2min + np.arccos( (R0**2. + R**2. - Lx1**2.)/(2.*R0*R) ) 
             if l < 0:
                 x2max = x2min + 2*np.pi - np.arccos( (R0**2. + R**2. - Lx1**2.)/(2.*R0*R) )
@@ -489,7 +500,7 @@ def polar2cartesian(r, t, grid, x, y, method='linear'):
 
     return griddata((Yold,Xold), grid, (Y,X), method=method)
 
-def get_labels(quant,iunit=0,log=False):
+def get_labels(quant,iunit=0,log=False,com=False):
 
     # Define dictionary for quants
     lab_quants = {'E':'Energy density', 'ie':'Internal energy density', 
@@ -555,6 +566,11 @@ def get_labels(quant,iunit=0,log=False):
     if quant == 's1c' or quant == 'mcent':
         xlabel = '$ t \; {\\rm [Myr]}$'
         ylabel = cbar_l
+        cbar_l = ''
+
+    if com:
+        xlabel = '$ t \; {\\rm [Myr]}$' 
+        ylabel = '$ R_{\\rm com} \; {\\rm [kpc]}$'
         cbar_l = ''
 
     return xlabel, ylabel, cbar_l 
@@ -635,6 +651,13 @@ def get_args():
                         default=False, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
+    parser.add_argument("--com", dest="com", action='store_true',
+                        default=False, required=False,
+                        help="Switch to compute cloud center of mass as a function of time, and\n"
+                            "plot it.")
+    parser.add_argument("--ipos",dest="ipos",
+                    default=0, type=int, 
+                    help="Integer position of observer (0,1,2,3) for rtrace") 
     return parser.parse_args() 
     
  
@@ -667,6 +690,8 @@ def main(args):
     ms       = args.ms
     rtrace   = args.rtrace 
     noplot   = args.noplot
+    com      = args.com
+    ipos     = args.ipos 
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -726,11 +751,24 @@ def main(args):
                 mcent2 /= mc
 
     else:
-        tarr, x1, x2, imgs       = get_stitch(pdict,quant,myfrms,iunit)
+        tarr, x1, x2, imgs   = get_stitch(pdict,quant,myfrms,iunit)
+
+    # Compute center of mass 
+    if com:
+        aprc, appc = get_fc(False, params, True)
+        imgs[:] *= aprc    # get cloud mass as a function of (x1, x2) 
+        # Find center of mass
+        Mtot  = np.sum(imgs,axis=(1,2)) 
+        X1, X2 = np.meshgrid(x1, x2) 
+        rcom = np.sum( imgs*X1, axis=(1,2) )/Mtot
+        pcom = np.sum( imgs*X2, axis=(1,2) )/Mtot 
+        
 
     if noplot:
         if ctrace:
             return tarr, x1, x2, imgs, imgc
+        elif com:
+            return tarr, rcom 
         else: 
             return tarr, x1, x2, imgs 
         quit() 
@@ -940,7 +978,32 @@ def main(args):
             if rtrace:
                 for i in range(len(rays)):
                     xmin, ymin, xmax, ymax = rays[i]
-                    ax1.plot([xmin,xmax],[ymin,ymax],'k--')
+                    l                      = longitudes[i] 
+                    l *= 180./np.pi
+                    ax1.plot([xmin,xmax],[ymin,ymax],'w--')
+                    
+                    if ipos == 0:
+                        if np.abs(l) < 100.:
+                            xp =  (xmin+xmax)/2.  
+                            yp =  (ymin+ymax)/2.  
+
+                        else:
+                            xp = xmax
+                            yp = ymax 
+                        rot_ang = np.arctan( (ymax - ymin)/(xmax-xmin) )*180./np.pi  
+
+                    elif ipos == 1:
+                        xp, yp = 0.3*xmax, ymin
+                        rot_ang = 0.
+                    elif ipos == 2:
+                        xp =  (xmin+xmax)/2.  
+                        yp =  (ymin+ymax)/2.
+                        rot_ang = 45.
+                    else:
+                        xp, yp = xmax, 0.4*ymax 
+                        rot_ang = 90.
+
+                    ax1.text(xp,yp, '$l =$ %1.1f$^{\\circ}$' % (l), color='w', rotation=rot_ang, rotation_mode='anchor')
             if ms:
                 ax1.plot(xsun,ysun,'y*',markersize=15.)
     
