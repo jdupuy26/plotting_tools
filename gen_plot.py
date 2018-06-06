@@ -560,6 +560,7 @@ def main(args):
                 for j in range(len(imgs)):
                     vals.append(np.array([imgs[j,nx2/2,i] for i in range(len(x1))]))
                 imgs = vals 
+                print(x2[nx2/2],x1[nx1/2])
             if dim == 3:
                 # Take slice
                 vals = []

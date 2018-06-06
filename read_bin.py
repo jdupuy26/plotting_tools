@@ -117,10 +117,10 @@ def read_bin(fl,precision):
     My = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     Mz = np.fromfile(file,dtype=prec,count=count).reshape(shape)
 
-    a = nvar-nscalars # modified to get rid of naddvar 
+    a = nvar-nscalars # modified to get rid of naddvar so that CLESSHD works  
+                      # this makes a=6 when IE is included 
 
-
-    if a == 5 or a == 8:   #not Barotropic
+    if a == 5 or a == 8 or a == 6:   #not Barotropic
         e  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     if a == 7 or a == 8:   #includes Magnetic fields
         bx  = np.fromfile(file,dtype=prec,count=count).reshape(shape)

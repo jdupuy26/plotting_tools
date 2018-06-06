@@ -136,6 +136,10 @@ def get_args():
                         default=True, required=False,
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
+    parser.add_argument("--com", dest="com", action='store_true',
+                    default=False, required=False,
+                    help="Switch to compute cloud center of mass as a function of time, and\n"
+                        "plot it.")
     # Arguments for (l,v) and sii plotting
     parser.add_argument("--interp",dest="interp",type=str,default='None',
                         help="What type of interpolation for imshow?\n" 
@@ -316,6 +320,7 @@ def make_plots(args,lvflag,otfflag,data,sims):
     cart     = args.cart
     log      = args.log
     iunit    = args.units  
+    com      = args.com
     mnx, mxx = args.mnmx
     mny, mxy = mnx, mxx
 
@@ -363,7 +368,7 @@ def make_plots(args,lvflag,otfflag,data,sims):
 
     #-----------------------------------------#
     # Create the proper figure
-    if otfflag or quant == 'asym':
+    if otfflag or quant == 'asym' or com:
         fig = plt.figure(figsize=(10.0,7.0),facecolor='white')
     else:   
         # Determine the size of the panel
@@ -466,10 +471,13 @@ def make_plots(args,lvflag,otfflag,data,sims):
             cb.ax.set_title(title + ' @ t = %1.1f [Myr]' % (tarr[iff]) ) 
 
     # Now handle otf figures
-    elif otfflag or quant=='asym': 
+    elif otfflag or quant=='asym' or com: 
         # Define labels 
         if quant == 'asym':
             ylab = '(l,v) asymmetry measure'
+            step = 1
+        elif com:
+            ylab = '$R_{\\rm com}$ [kpc]'
             step = 1
         else:
             ylab = potf.get_ylabel(quant)
@@ -485,8 +493,8 @@ def make_plots(args,lvflag,otfflag,data,sims):
         markers= ['s','p','^','o']
 
         # Put labels on plot
-        plt.xlabel(xlab)
-        plt.ylabel(ylab)
+        plt.xlabel(xlab,fontsize=16)
+        plt.ylabel(ylab,fontsize=16)
 
         for (dat, v, c, l, m) in zip(data, var, colors, lines, markers): 
             tarr, vals = dat 
