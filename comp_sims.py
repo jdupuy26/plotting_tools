@@ -140,6 +140,9 @@ def get_args():
                     default=False, required=False,
                     help="Switch to compute cloud center of mass as a function of time, and\n"
                         "plot it.")
+    parser.add_argument("--stat",dest="stat",
+                        default='None', type=str,
+                        help="Type of statistic to compute error bars in CoM measurement") 
     # Arguments for (l,v) and sii plotting
     parser.add_argument("--interp",dest="interp",type=str,default='None',
                         help="What type of interpolation for imshow?\n" 
@@ -497,9 +500,16 @@ def make_plots(args,lvflag,otfflag,data,sims):
         plt.ylabel(ylab,fontsize=16)
 
         for (dat, v, c, l, m) in zip(data, var, colors, lines, markers): 
-            tarr, vals = dat 
+            if com:
+                tarr, rlo, rhi, vals = dat
+            else:
+                tarr, vals = dat 
             plt.plot(tarr[::step], vals[::step], linestyle=l, color = c, label= '%s%s%s' % (pstr,v, punit),
                      linewidth=2., marker=m, markersize=7.)  
+
+            # Error on CoM
+            if com: 
+                plt.fill_between(tarr[::step], rlo[::step], rhi[::step], alpha=0.2,antialiased=True, color=c)
         
         if quant == '<A1>':
             # Plot cutoff value

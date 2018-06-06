@@ -658,6 +658,9 @@ def get_args():
     parser.add_argument("--ipos",dest="ipos",
                     default=0, type=int, 
                     help="Integer position of observer (0,1,2,3) for rtrace") 
+    parser.add_argument("--stat",dest="stat",
+                        default='None', type=str,
+                        help="Type of statistic to compute error bars in CoM measurement") 
     return parser.parse_args() 
     
  
@@ -692,6 +695,7 @@ def main(args):
     noplot   = args.noplot
     com      = args.com
     ipos     = args.ipos 
+    stat     = args.stat
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -761,14 +765,49 @@ def main(args):
         Mtot  = np.sum(imgs,axis=(1,2)) 
         X1, X2 = np.meshgrid(x1, x2) 
         rcom = np.sum( imgs*X1, axis=(1,2) )/Mtot
-        pcom = np.sum( imgs*X2, axis=(1,2) )/Mtot 
         
+        # Find center of mass for each \phi
+            # Here we sum only over the R-axis  
+        Mtot_phi = np.sum(imgs, axis=(2))
+        # Make it so that we do not compute the CoM for phi bins 
+            # that have negligible mass in them, currently defined
+            # 0.1% of Mc 
+        Mtot_phi[ Mtot_phi < 1e-3*params[0].mhvc ] = np.nan 
+        rcom_phi = np.sum(imgs*X1, axis=(2))/Mtot_phi  
+
+        # Get rid of NaN values, and compute rlo, rhi  
+        rlo, rhi = np.zeros(len(imgs)), np.zeros(len(imgs))  
+        i = 0
+
+        for rp in rcom_phi:
+            rcp    = rp[~np.isnan(rp)] 
+            if stat == 'mean':
+                std    = rcom[i] - np.mean(rcp) 
+            elif stat == 'std':
+                std    = np.sqrt(np.var(rcp))
+            elif stat == 'median':
+                std    = rcom[i] - np.median(rcp) 
+            elif stat == 'min/max':
+                if rcp.size != 0:
+                    rlo[i] = np.min(rcp)
+                    rhi[i] = np.max(rcp) 
+                else:
+                    rlo[i] = rcom[i]
+                    rhi[i] = rcom[i] 
+            else: 
+                print('[main]: Stat for CoM calculation not understood.') 
+
+            if stat != 'min/max':
+                rlo[i] = rcom[i] - std 
+                rhi[i] = rcom[i] + std 
+            
+            i     += 1 
 
     if noplot:
         if ctrace:
             return tarr, x1, x2, imgs, imgc
         elif com:
-            return tarr, rcom 
+            return tarr, rlo, rhi, rcom 
         else: 
             return tarr, x1, x2, imgs 
         quit() 
