@@ -123,7 +123,7 @@ def get_log(data):
 
 #================================
 # get_title() function
-def get_title(quant,nolog,**kwargs):
+def get_title(quant,nolog,sumv=False,**kwargs):
     lab = 'def'
     for key in kwargs:
         if key == 'iline':
@@ -140,8 +140,12 @@ def get_title(quant,nolog,**kwargs):
         else: 
             print('[get_title]: iline not recognized \n')
             quit()
+ 
     if not nolog:
         lab = 'log('+lab+')'
+
+    if sumv:
+        lab = 'log$_{10}$(T$_A$/K) summed over velocity bins' 
     return lab
 
 #================================
@@ -310,6 +314,9 @@ def get_args():
                              "1: Position is from Andromeda @ angle 0  deg\n"
                              "2: Position is from Andromeda @ angle 45 deg\n"
                              "3: Position is from Andromeda @ angle 90 deg\n")
+    parser.add_argument("--sumv", dest="sumv",action='store_true',
+                        default=False, required=False,
+                        help="Sum over velocity bins to get I(l)")
     parser.add_argument("--noplot", dest="noplot",action='store_true',
                         default=False, required=False, 
                         help="Switch to return only stitched together array\n"
@@ -342,6 +349,7 @@ def main(args):
     ctrace = args.ctrace
     vmnmx  = args.vmnmx
     ipos   = args.ipos
+    sumv   = args.sumv
     noplot = args.noplot
     
     # Get panel flag 
@@ -430,14 +438,17 @@ def main(args):
     if noplot:
         if quant == 'asym':
             return tarr, data # (l,v) asymmetry measure (sum of intensity divided on both sides)
+        elif sumv:
+            data = np.sum(data, axis=(1))
+            return tarr, x, data 
         elif ctrace:
             return tarr, x, y, data, cloud
         else: 
             return tarr, x, y, data 
         quit() 
         
-        # Get labels 
-    title = get_title(quant,nolog,iline=iline)
+    # Get labels 
+    title = get_title(quant,nolog,sumv,iline=iline)
     xlab  = get_xlabel(quant)
     ylab  = get_ylabel(quant)
     asp   = get_aspect(quant)
@@ -455,10 +466,24 @@ def main(args):
     if not pflag:
         # Open figure
         fig = plt.figure(figsize=(7.0,5.5),facecolor='white')
-        ax1 = fig.add_subplot(111, axisbg='black')
-    
+        if sumv:
+            bgcol = 'white'
+        else:
+            bgcol = 'black'
+        ax1 = fig.add_subplot(111, axisbg=bgcol)
+
+    # Handle plotting sumv stuff
+    if sumv:
+        data = np.sum(data,axis=(1))
+        if not nolog:
+            data = get_log(data) 
+        ax1.plot(x,data[0],'b-')
+        ax1.set_xlabel(xlab)
+        ax1.set_ylabel(title) 
+        ax1.set_title('t = %1.1f [Myr]' % (tarr[0]))
+
     # Handle animation
-    if anim:
+    elif anim:
         # Get spacing
         dx = x[1] - x[0]
         dy = y[0][1] - y[0][0]
