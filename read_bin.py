@@ -183,7 +183,7 @@ def read_bin(fl,precision):
             d,Mx,My,Mz,e,ie,s,\
             bx,by,bz,phi,\
             gamm1,cs,t,dt,nscalars,\
-            clesshd 
+            clesshd, coordsys 
 
 #=====================================================
 #
