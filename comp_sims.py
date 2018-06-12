@@ -170,6 +170,9 @@ def get_args():
                              "1: Position is from Andromeda @ angle 0  deg\n"
                              "2: Position is from Andromeda @ angle 45 deg\n"
                              "3: Position is from Andromeda @ angle 90 deg\n")
+    parser.add_argument("--sumv", dest="sumv",action='store_true',
+                    default=False, required=False,
+                    help="Sum over velocity bins to get I(l)")                 
     # Arguments for otf plotting 
     parser.add_argument("--rmnmx", dest="rmnmx",nargs=2,required=False,
                     default=[5000., 13000.],type=float,
@@ -270,6 +273,8 @@ def get_data(args, sims):
 
         if quant=='asym':
             lvflag = False
+        elif args.sumv:
+            lvflag = False 
         else:
             lvflag  = True
         otfflag = False
@@ -324,6 +329,7 @@ def make_plots(args,lvflag,otfflag,data,sims):
     log      = args.log
     iunit    = args.units  
     com      = args.com
+    sumv     = args.sumv
     mnx, mxx = args.mnmx
     mny, mxy = mnx, mxx
 
@@ -482,6 +488,7 @@ def make_plots(args,lvflag,otfflag,data,sims):
         elif com:
             ylab = '$R_{\\rm com}$ [kpc]'
             step = 1
+
         else:
             ylab = potf.get_ylabel(quant)
             step = 5
