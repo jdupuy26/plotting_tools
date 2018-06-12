@@ -120,6 +120,13 @@ def get_files(mydir='./'):
 
     return pdict 
 
+# \func get_log():
+# takes the log of data 
+def get_log(data):
+    data[np.where(data <= 0.0)] = 1e-80
+    data = np.log10(data)
+    return data 
+
 #\func get_athinput():
 # reads athinput and returns base, params
 def get_athinput(cwd=-1):
@@ -138,7 +145,7 @@ def get_quant(file,quant,units,precision=32):
     d,M1,M2,M3,e,ie,s,\
     bx,by,bz,phi, \
     gamm1,cs,t,dt,nscalars,\
-    clesshd                  = read_bin(file,precision)
+    clesshd, coordsys = read_bin(file,precision)
     
     # Set units
     if   units == 1:
@@ -191,6 +198,8 @@ def get_quant(file,quant,units,precision=32):
         all_quants['normE'] = np.sqrt( all_quants['E11']**2. + 2.*all_quants['E12']**2. +
                                        all_quants['E22']**2. + 2.*all_quants['E13']**2. +
                                        all_quants['E33']**2. + 2.*all_quants['E23']**2. )
+    if quant == 'coordsys':
+        return coordsys 
 
     return t, x1, x2, x3, all_quants[quant] 
 
@@ -310,6 +319,41 @@ def get_stitch(pdict,quant,myfrms,**kwargs):
     else:
         return tarr, x1, x2, x3, quant_arr
 
+# \func get_fc()
+# given cell centered x1, x2, returns face centered grid 
+# currently only necessary for 2d 
+def get_fc(params, lg=False, apc=False):
+    
+    # if using log grid (ilog=1)  
+    if lg:
+        # x1 direction  
+        lx1f = np.linspace(np.log(params[0].x1min),
+                           np.log(params[0].x1max),params[0].nx1+1)
+        # x2 direction
+        x2f  = np.linspace(       params[0].x2min,
+                                  params[0].x2max, params[0].nx2+1) 
+        x1f  = np.exp(lx1f) 
+    else: 
+        # x1 direction  
+        x1f =  np.linspace(params[0].x1min,
+                           params[0].x1max,params[0].nx1+1)
+        # x2 direction
+        x2f  = np.linspace(params[0].x2min,
+                           params[0].x2max, params[0].nx2+1) 
+
+    if apc:      
+        # get area per cell 
+        x1c = 0.5*(x1f[1:] + x1f[0:-1])*1.e3
+        ar  =     (x1f[1:] - x1f[0:-1])*1.e3  # convert to pc 
+        ap  = x1c*(x2f[1:] - x2f[0:-1])
+
+        # Area per cell
+        return np.meshgrid(ar*ap, ar*ap, indexing='xy') 
+    else:
+        return np.meshgrid(x1f, x2f, indexing='xy')   
+
+
+
 def get_labels(quant,dim,log=False):
 
     # Define dictionary for quants
@@ -399,7 +443,7 @@ def get_args():
                         help="Switch to save anim or figure")
     parser.add_argument("--log",dest="log",action='store_true',
                         default=False,
-                        help="Switch to take log images, default is False")
+                        help="Switch to take log of images, default is False")
     parser.add_argument("--units",dest="units",type=int,required=False,
                         default=0, help="units: 0-comp,1-cgs,2-SI")  
     parser.add_argument("--grid", dest="grid",action='store_true',
@@ -425,6 +469,12 @@ def get_args():
                              "2d plots\n") 
     parser.add_argument("--slice",dest="slc",type=int, required=False,
                         default='-1', help="Slice 3d array into 2d along INT axis\n")
+    parser.add_argument("--lg",dest="lg",action='store_true',
+                        default=False, required=False, 
+                        help="Switch for turning on log-grid")
+    parser.add_argument("--nocyl",dest="nocyl",action='store_true',
+                        default=False, required=False,
+                        help="Switch for plotting cylindrical simulations as R, \phi") 
     return parser.parse_args() 
     
  
@@ -454,6 +504,15 @@ def main(args):
     slicel1d = args.slicel1d
     col      = args.col
     slc      = args.slc   
+    lg       = args.lg 
+    nocyl    = args.nocyl
+
+    # get files 
+    pdict = get_files()
+    # get the coordinate system 
+    mykey = pdict.keys()[0] 
+    fnm   = mykey + '/' + pdict[mykey][0]
+    coordsys = get_quant(fnm, 'coordsys', iunit)
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -463,11 +522,11 @@ def main(args):
     mnmxflag = False if mxx == np.pi else True  
     # Get slice flag
     slice2d  = False if slc == -1 else True 
+    # Set the coordinate system flag
+    cyl      = True if coordsys == -2 and not nocyl else False 
     
     if np.size(ifrm) == 1: ifrm = ifrm[0]
     
-    # get files 
-    pdict = get_files() 
     # Change default iani values
     if iani[1] == 0:
         iani[1] = len(pdict[list(pdict.keys())[0]]) 
@@ -480,11 +539,13 @@ def main(args):
     else: 
         myfrms = [ifrm] 
     # get data
-    
     if vvec:
         tarr, x1, x2, imgs, vx_imgs, vy_imgs = get_stitch(pdict,quant,myfrms,vvecs=vvec)
     else:
         tarr, x1, x2, x3, imgs = get_stitch(pdict,quant,myfrms)
+    if log:
+        imgs = get_log(imgs) 
+
 
     # Get dimensions of data
     nf, nx3, nx2, nx1 = imgs.shape 
@@ -500,6 +561,7 @@ def main(args):
         flag1d = True 
         dim    = 1
 
+    
     # Change flags for slicing 
     if sliced1d or slicel1d:
         if flag2d:
@@ -514,6 +576,11 @@ def main(args):
     if slice2d:
         flag3d = False
         flag2d = True 
+    
+    # Get face-centered grid if cylindrical  
+    if flag2d and cyl: 
+        x1f , x2f  = get_fc(params, lg) 
+        x1cf, x2cf = x1f*np.cos(x2f), x1f*np.sin(x2f) 
 
     # Determine labels 
     xlab, ylab, clab = get_labels(quant,dim,log)
@@ -560,7 +627,6 @@ def main(args):
                 for j in range(len(imgs)):
                     vals.append(np.array([imgs[j,nx2/2,i] for i in range(len(x1))]))
                 imgs = vals 
-                print(x2[nx2/2],x1[nx1/2])
             if dim == 3:
                 # Take slice
                 vals = []
@@ -613,12 +679,16 @@ def main(args):
     
     elif flag2d:
         # Get extent of grid 
-        mnx1, mxx1, mnx2, mxx2 = ( np.min(x1), np.max(x1),
-                                   np.min(x2), np.max(x2) ) 
-        dx1, dx2 = x1[1]-x1[0], x2[1]-x2[0]
+        if cyl:
+            mnx1, mxx1, mnx2, mxx2 = ( np.min(x1cf), np.max(x1cf),
+                                       np.min(x2cf), np.max(x2cf) )
+        else: 
+            mnx1, mxx1, mnx2, mxx2 = ( np.min(x1), np.max(x1),
+                                       np.min(x2), np.max(x2) ) 
+            dx1, dx2 = x1[1]-x1[0], x2[1]-x2[0]
 
-        mnx1 -= 0.5*dx1; mxx1 += 0.5*dx1
-        mnx2 -= 0.5*dx2; mxx2 += 0.5*dx2
+            mnx1 -= 0.5*dx1; mxx1 += 0.5*dx1
+            mnx2 -= 0.5*dx2; mxx2 += 0.5*dx2
         # Determine colorbar 
         div = make_axes_locatable(ax1)
         cax = div.append_axes('right', '5%', '5%') 
@@ -640,9 +710,13 @@ def main(args):
         # Handle animation
         if anim: 
             ax1.set_title('t = %1.2f' %(tarr[0]) )
-            im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
-                                       vmin=qmin,vmax=qmax, origin='lower',
-                                       interpolation='None')
+            if cyl:
+                im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
+                ax1.set_aspect('equal')
+            else: 
+                im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
+                                           vmin=qmin,vmax=qmax, origin='lower',
+                                           interpolation='None')
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
 
@@ -654,9 +728,12 @@ def main(args):
                 # Set title 
                 ax1.set_title('t = %1.2f' %(tarr[ifrm]) )
                 # Plot 
-                im   = ax1.imshow(imgs[ifrm], extent=(mnx1, mxx1, mnx2, mxx2),
-                                              vmin=qmin,vmax=qmax, origin='lower',
-                                              interpolation='None')
+                if cyl:
+                    im   = ax1.pcolorfast(x1cf,x2cf, imgs[ifrm], vmin=qmin,vmax=qmax)
+                else:
+                    im   = ax1.imshow(imgs[ifrm], extent=(mnx1, mxx1, mnx2, mxx2),
+                                                  vmin=qmin,vmax=qmax, origin='lower',
+                                                  interpolation='None')
                 im.set_rasterized(True) 
                 # Set labels for x,y
                 ax1.set_xlabel(xlab)
@@ -684,9 +761,13 @@ def main(args):
             ax1.set_ylabel(ylab)
 
             ax1.set_title('t = %1.2f' %(tarr[0]) )
-            im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
-                                       vmin=qmin,vmax=qmax, origin='lower',
-                                       interpolation='None')
+            if cyl:
+                im   = ax1.pcolorfast(x1cf,x2cf, imgs[0], vmin=qmin,vmax=qmax)
+                ax1.set_aspect('equal')
+            else:
+                im   = ax1.imshow(imgs[0], extent=(mnx1, mxx1, mnx2, mxx2),
+                                           vmin=qmin,vmax=qmax, origin='lower',
+                                           interpolation='None')
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
 
@@ -704,10 +785,7 @@ def main(args):
 
         x1, x2, x3 = np.meshgrid(x1,x2,x3) 
         
-
         ax1.scatter(x1,x2,x3, c=imgs[0].ravel(),cmap=plt.hot()) 
-
-
     else: 
         print("[main]: Unsure what to plot  :( ")  
             
@@ -721,7 +799,7 @@ def main(args):
         myname = '' 
         if anim:
             print("[main]: Saving animation...")
-            ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=30.
+            ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=15.
                      ,writer='imagemagick')
 
         else:
