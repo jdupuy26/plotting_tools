@@ -104,7 +104,7 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
     d,M1,M2,M3,e,ie,s,\
     bx,by,bz,phi, \
     gamm1,cs,t,dt,nscalars,\
-    clesshd = read_bin(file,precision)
+    clesshd, coordsys = read_bin(file,precision)
 
     # Set units
     if   units == 1:
@@ -766,21 +766,15 @@ def main(args):
         X1, X2 = np.meshgrid(x1, x2) 
         rcom = np.sum( imgs*X1, axis=(1,2) )/Mtot
         
-        # Find center of mass for each \phi
+        # Sum over phi to get M(R,t) 
             # Here we sum only over the R-axis  
-        Mtot_phi = np.sum(imgs, axis=(2))
-        # Make it so that we do not compute the CoM for phi bins 
-            # that have negligible mass in them, currently defined
-            # 0.1% of Mc 
-        Mtot_phi[ Mtot_phi < 1e-3*params[0].mhvc ] = np.nan 
-        rcom_phi = np.sum(imgs*X1, axis=(2))/Mtot_phi  
-
-        # Get rid of NaN values, and compute rlo, rhi  
+        M_R = np.sum(imgs, axis=(1))
         rlo, rhi = np.zeros(len(imgs)), np.zeros(len(imgs))  
         i = 0
-
-        for rp in rcom_phi:
-            rcp    = rp[~np.isnan(rp)] 
+        for Mr in M_R:
+            # Make it so that negligible mass doesn't 
+            #   contribute to R, here 1% 
+            rcp    = x1[ Mr > 1e-2*params[0].mhvc ]  
             if stat == 'mean':
                 std    = rcom[i] - np.mean(rcp) 
             elif stat == 'std':
