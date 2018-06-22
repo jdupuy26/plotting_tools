@@ -164,10 +164,12 @@ def get_quant(file,quant,units,precision=32):
 
     # Parse collisionless variables  
     dcl, M1cl, M2cl, M3cl, E11, E22, E33, E12, E13, E23 = clesshd 
+    # Test whether CLESSHD is used 
+    cless = dcl.any() 
 
     
     # Define dictionary for quants
-    all_quants = {'E':e, 'ie':ie, 'd':d, 'mcent':d,
+    hydro_quants = {'E':e, 'ie':ie, 'd':d, 'mcent':d,
                   'n':d*ucgs.rhos/(ucgs.m_h), 'pie':gamm1*ie,
                   'p':gamm1*(e - 0.5*(M1**2.+M2**2.+M3**2.)/d),
                   'T':T,
@@ -176,15 +178,20 @@ def get_quant(file,quant,units,precision=32):
                   'M1':M1,'M2':M2,'M3':M3,
                   'v':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
                   'cs': np.sqrt(gamm1*ie/d),
-                  'phi':phi,
-                  'dcl':dcl, 'M1cl':M1cl, 'M2cl':M2cl, 'M3cl':M3cl,
-                  'Mcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.), 
-                  'v1cl':M1cl/dcl,'v2cl':M2cl/dcl,'v3cl':M3cl/dcl,
-                  'vcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.)/dcl,
-                  'E11':E11, 'E22':E22, 'E33':E33, 'E12':E12, 'E13':E13, 'E23':E23, 
-                  'P11':E11-(M1cl)*(M1cl/dcl),'P22':E22-(M2cl)*(M2cl/dcl),
-                  'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
-                  'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
+                  'phi':phi}
+    if cless:
+        cless_quants = {'dcl':dcl, 'M1cl':M1cl, 'M2cl':M2cl, 'M3cl':M3cl,
+                      'Mcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.), 
+                      'v1cl':M1cl/dcl,'v2cl':M2cl/dcl,'v3cl':M3cl/dcl,
+                      'vcl':np.sqrt(M1cl**2.+M2cl**2.+M3cl**2.)/dcl,
+                      'E11':E11, 'E22':E22, 'E33':E33, 'E12':E12, 'E13':E13, 'E23':E23, 
+                      'P11':E11-(M1cl)*(M1cl/dcl),'P22':E22-(M2cl)*(M2cl/dcl),
+                      'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
+                      'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
+    if cless:
+        all_quants = dict(hydro_quants, **cless_quants)
+    else:
+        all_quants = hydro_quants 
 
     if quant == 'detP' or quant == 'detE':
         all_quants['detP'] = ( all_quants['P11']*all_quants['P22'] -
@@ -561,7 +568,6 @@ def main(args):
         flag1d = True 
         dim    = 1
 
-    
     # Change flags for slicing 
     if sliced1d or slicel1d:
         if flag2d:

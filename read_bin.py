@@ -129,16 +129,18 @@ def read_bin(fl,precision):
     if nscalars > 0:
         for i in range(0,nscalars):
             s[:,:,:,i]  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-   
-    # Read in potential from self-gravity
-    if ngrav > 0:
-        phi = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
 
     if naddvar == 1:
         # Read in internal energy
         ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-
+        # Read in potential from self-gravity
+        if ngrav > 0:
+            phi = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+   
     elif naddvar == 10:
+        # Read in potential from self-gravity
+        if ngrav > 0:
+            phi = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         # Read in collisionless variables 
         dcl  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         M1cl = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
@@ -154,6 +156,9 @@ def read_bin(fl,precision):
     elif naddvar > 10:
         # Read in internal energy
         ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+        # Read in potential from self-gravity
+        if ngrav > 0:
+            phi = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
         # Read in collisionless variables 
         dcl  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         M1cl = np.fromfile(file,dtype=prec,count=count).reshape(shape) 
