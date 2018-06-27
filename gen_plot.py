@@ -163,7 +163,7 @@ def get_quant(file,quant,units,precision=32):
         T      = gamm1*ie*ucgs.esdens/(ucgs.k_b * ( d*ucgs.rhos/ucgs.m_h)) 
 
     # Parse collisionless variables  
-    dcl, M1cl, M2cl, M3cl, E11, E22, E33, E12, E13, E23 = clesshd 
+    dcl, M1cl, M2cl, M3cl, E11, E22, E33, E12, E13, E23, p11, p22, p33 = clesshd 
     # Test whether CLESSHD is used 
     cless = dcl.any() 
 
@@ -187,7 +187,9 @@ def get_quant(file,quant,units,precision=32):
                       'E11':E11, 'E22':E22, 'E33':E33, 'E12':E12, 'E13':E13, 'E23':E23, 
                       'P11':E11-(M1cl)*(M1cl/dcl),'P22':E22-(M2cl)*(M2cl/dcl),
                       'P33':E33-(M3cl)*(M3cl/dcl),'P12':E12-(M1cl)*(M2cl/dcl),
-                      'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl)}
+                      'P23':E23-(M2cl)*(M3cl/dcl),'P13':E13-(M1cl)*(M3cl/dcl),
+                      'p11':p11, 'p22': p22, 'p33': p33}
+    
     if cless:
         all_quants = dict(hydro_quants, **cless_quants)
     else:
@@ -385,6 +387,7 @@ def get_labels(quant,dim,log=False):
                   'vcl':'v$_{\\rm cl}$','Mcl':'M$_{\\rm cl}$', 
                   'M2cl':'M$_{2,\\rm cl}$','M3cl':'M$_{3,\\rm cl}$',
                   'P11':'P$_{11}$','P22':'P$_{22}$','P33':'P$_{33}$',
+                  'p11':'P$_{ie,11}$','p22':'P$_{ie,22}$','p33':'P$_{ie,33}$',
                   'P12':'P$_{12}$','P23':'P$_{23}$','P13':'P$_{13}$',
                   'E11':'E$_{11}$','E22':'E$_{22}$','E33':'P$_{33}$',
                   'E12':'E$_{12}$','E23':'E$_{23}$','E13':'P$_{13}$',
