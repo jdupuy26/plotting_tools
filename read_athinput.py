@@ -109,7 +109,7 @@ def readath(fl):
        file = open(fl)
        content = file.readlines()
     except:
-        print 'read_athinput: failed to read file input'
+        print('read_athinput: failed to read file input')
         quit()
 
 
@@ -136,7 +136,7 @@ def readath(fl):
 
 
     if num == 0: 
-        print 'read_athinput: NO DOMAIN KEYWORD FOUND'
+        print('read_athinput: NO DOMAIN KEYWORD FOUND')
         quit()
     #Create sturcture for holding data for all domains
     params = [athparams()]
