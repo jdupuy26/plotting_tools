@@ -5,6 +5,7 @@ import os
 import subprocess as sbp
 from functools import reduce
 # matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -16,6 +17,7 @@ from matplotlib import _cntr as cntr
 from scipy.interpolate import griddata 
 from scipy.interpolate import interp1d,interp2d 
 from scipy.interpolate import RectBivariateSpline
+from scipy.ndimage import center_of_mass
 import argparse
 from argparse import RawTextHelpFormatter
 import time as t
@@ -146,9 +148,11 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
     vlos = np.zeros( d.shape ) 
     jl   = np.zeros( d.shape ) 
     T    = np.zeros( d.shape ) 
+
+
+    X1, X2 = np.meshgrid(x1,x2,indexing='xy')
     
     if quant == 'vlos':
-        X1, X2 = np.meshgrid(x1,x2,indexing='xy')
         x1_cart, x2_cart = X1*np.cos(X2), X1*np.sin(X2)
         xtosun = x1_cart - R0*np.cos(p0)
         ytosun = x2_cart - R0*np.sin(p0)
@@ -178,6 +182,7 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
                   'V':np.sqrt(M1**2.+(M2 + omg*x1*d)**2.+M3**2.)/d,
                   'cs': np.sqrt(gamm1*ie/d), 
                   's1': s1,'s1c': s1,
+                  'L': (M2 + omg*x1*d)*X1,
                     # Jeans length 
                   'jl':jl,
                   'vlos':vlos}
@@ -284,7 +289,6 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False,**kwargs):
             mydir = kwargs[key]
         if key == 'vvecs':
             vvec = kwargs[key]
-    
     # read athinput
     base, params = get_athinput() 
    
@@ -418,11 +422,15 @@ def get_fc(cart, params, apc=False):
     if apc:      
         # get area per cell 
         x1c = 0.5*(x1f[1:] + x1f[0:-1])*1.e3
-        ar  =     (x1f[1:] - x1f[0:-1])*1.e3  # convert to pc 
-        ap  = x1c*(x2f[1:] - x2f[0:-1])
+        ar  = 0.5*((1.e3*x1f[1:])**2. - (1.e3*x1f[0:-1])**2.)  # convert to pc 
+        ap  =     (x2f[1:] - x2f[0:-1])
 
+        area = np.zeros((len(ap), len(ar)))
+        for j in range(len(ap)):
+            for i in range(len(ar)):
+                area[j,i] = ar[i]*ap[j]
         # Area per cell
-        return np.meshgrid(ar*ap, ar*ap, indexing='xy') 
+        return area 
     else:
         return np.meshgrid(x1f, x2f, indexing='xy')   
 
@@ -514,7 +522,8 @@ def get_labels(quant,iunit=0,log=False,com=False):
                   'cs':'c$_s$', 
                   'V':'V$_{tot}$',
                   's1':'$\Sigma_c$','s1c':'$M_c (R < 0.5 \; {\\rm [kpc])}/M_c$',
-                  'jl':'$\lambda_J$','vlos':'$v_{\\rm los}$'}
+                  'jl':'$\lambda_J$','vlos':'$v_{\\rm los}$',
+                  'L': 'L'}
 
     xlabel = 'x [kpc]'
     ylabel = 'y [kpc]' 
@@ -530,7 +539,8 @@ def get_labels(quant,iunit=0,log=False,com=False):
                      'M3': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$','V':' [pc Myr$^{-1}$]',
                      'cs': ' [pc Myr$^{-1}$]',
                      's1': ' [M$_{\odot}$ pc$^{-2}$]','s1c':' [unitless]',
-                     'jl': ' [kpc]','vlos':' [pc/Myr]'}
+                     'jl': ' [kpc]','vlos':' [pc/Myr]',
+                     'L': '[comp units]'}
 
     lab_unitsCGS  = {'E':' [g s$^{-2}$]','ie':' [g s$^{-2}$]',
                      'd':' [g cm$^{-2}$]', 'p':' [g s$^{-2}$]',
@@ -655,6 +665,9 @@ def get_args():
                         default=False, required=False,
                         help="Switch to compute cloud center of mass as a function of time, and\n"
                             "plot it.")
+    parser.add_argument("--stream", dest="stream",action='store_true',
+                        default=False, required=False,
+                        help="Switch to make a stream plot")
     parser.add_argument("--ipos",dest="ipos",
                     default=0, type=int, 
                     help="Integer position of observer (0,1,2,3) for rtrace") 
@@ -696,6 +709,7 @@ def main(args):
     com      = args.com
     ipos     = args.ipos 
     stat     = args.stat
+    stream   = args.stream 
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -737,8 +751,8 @@ def main(args):
         pcts = np.array([0.95,0.5])  # define percentages  
         alpha=1.0
 
-    elif vvec:
-        tarr, x1, x2, imgs, vx_imgs, vy_imgs = get_stitch(pdict,quant,myfrms,iunit,vvecs=vvec)
+    elif vvec or stream:
+        tarr, x1, x2, imgs, vx_imgs, vy_imgs = get_stitch(pdict,quant,myfrms,iunit,vvecs=True)
         
     elif flag1d:
         tarr, mcent = get_stitch(pdict, quant, myfrms, iunit) 
@@ -759,19 +773,25 @@ def main(args):
 
     # Compute center of mass 
     if com:
-        aprc, appc = get_fc(False, params, True)
-        imgs[:] *= aprc    # get cloud mass as a function of (x1, x2) 
+        apc = get_fc(False, params, True)
+
+        imgs[:] *= apc    # get cloud mass as a function of (x1, x2) 
+
         # Find center of mass
         Mtot  = np.sum(imgs,axis=(1,2)) 
-        X1, X2 = np.meshgrid(x1, x2) 
-        rcom = np.sum( imgs*X1, axis=(1,2) )/Mtot
+
+        X1, X2 = np.meshgrid(x1, x2, indexing='xy') 
+
         
+
         # Sum over phi to get M(R,t) 
             # Here we sum only over the R-axis  
         M_R = np.sum(imgs, axis=(1))
+        # Get the radial center of mass of this summed array
+        rcom = np.sum(M_R*x1, axis=1)/Mtot
+
         rlo, rhi = np.zeros(len(imgs)), np.zeros(len(imgs))  
-        i = 0
-        for Mr in M_R:
+        for i,Mr in enumerate(M_R):
             # Make it so that negligible mass doesn't 
             #   contribute to R, here 1% 
             rcp    = x1[ Mr > 1e-2*params[0].mhvc ]  
@@ -794,9 +814,66 @@ def main(args):
             if stat != 'min/max':
                 rlo[i] = rcom[i] - std 
                 rhi[i] = rcom[i] + std 
-            
-            i     += 1 
 
+        # Make the plot
+        if not noplot:
+            fig = plt.figure(figsize=(10.0,7.0),facecolor='white')
+            ax  = fig.add_subplot(111) 
+            
+            ylab = '$R_{\\rm com}$ [kpc]'
+            step = 1
+
+            xlab = 't [Myr]' 
+            # Define plotting markers
+            #colors = ['b-','m-','k-','g-']
+            mycmap = mpl.cm.get_cmap('viridis')
+            colors = [ mycmap(x) for x in np.linspace(0.0, 0.8, 4)]
+            lines  = ['-','-','-','-']
+            markers= ['s','p','^','o']
+
+            # Put labels on plot
+            ax.set_xlabel(xlab,fontsize=16)
+            ax.set_ylabel(ylab,fontsize=16)
+
+            ax.plot(tarr[::step], rcom[::step], linestyle=lines[0], color = colors[0],
+                     linewidth=2., marker=markers[0], markersize=7.)  
+
+            # Error on CoM
+            ax.fill_between(tarr[::step], rlo[::step], rhi[::step], alpha=0.2,antialiased=True, color=colors[0])
+            # Show & quit
+            plt.show()
+            quit()
+
+    # handle streamplot
+    if stream:
+        # Step 0) Set dimension of interpolated grid
+        nx2 = nx1 = 512
+        # Step 1) Interpolate onto cartesian grid
+        x1cart = np.linspace(-np.max(x1), np.max(x1), nx1)
+        x2cart = np.linspace(-np.max(x1), np.max(x1), nx2)
+
+        X1, X2 = np.meshgrid(x1cart,x2cart,indexing='xy')
+        
+        cart_data = {}
+        cart_data['vx'] = []
+        cart_data['vy'] = []
+        cart_data['d' ] = [] 
+
+        for i,dat in enumerate(imgs):
+            cart_data['vx'].append( polar2cartesian(x1,x2,vx_imgs[i],x1cart,x2cart) )
+            cart_data['vy'].append( polar2cartesian(x1,x2,vy_imgs[i],x1cart,x2cart) )
+
+        # Step 2) Call the stream plot function
+        #fig = plt.figure(figsize=(7.0,7.0),facecolor='white')
+
+        #ax.streamplot(X1,X2,cart_data['vx'][0],cart_data['vy'][0])
+
+        #plt.show() 
+
+        #quit()
+
+    
+     
     if noplot:
         if ctrace:
             return tarr, x1, x2, imgs, imgc
@@ -926,6 +1003,9 @@ def main(args):
                 ax1.set_aspect('equal')
                 # Set colorbar
                 cbar = fig.colorbar(im,label=clab, cax=cax)
+                # plot CoM of cloud 
+                if com:
+                    ax1.plot(xcom[ifrm],ycom[ifrm],'yo')
                 return   
 
             ani = animation.FuncAnimation(fig, animate, range(len(myfrms)),
@@ -1007,6 +1087,8 @@ def main(args):
             if vvec:
                 nar = 16
                 ax1.quiver(x1cc[::nar,::nar],x2cc[::nar,::nar],vx_imgs[0][::nar,::nar],vy_imgs[0][::nar,::nar]) 
+            if stream:
+                ax1.streamplot(X1,X2,cart_data['vx'][0],cart_data['vy'][0],color='c',linewidth=2,density=2)
            
             if rtrace:
                 for i in range(len(rays)):
@@ -1039,7 +1121,10 @@ def main(args):
                     ax1.text(xp,yp, '$l =$ %1.1f$^{\\circ}$' % (l), color='w', rotation=rot_ang, rotation_mode='anchor')
             if ms:
                 ax1.plot(xsun,ysun,'y*',markersize=15.)
-    
+            # plot CoM of cloud 
+            if com:
+                ax1.plot(xcom,ycom,'yx')
+
             # Same deal here 
             im.set_rasterized(True) 
             cbar = fig.colorbar(im,label=clab,cax=cax) 
