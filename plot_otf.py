@@ -321,7 +321,7 @@ def get_args():
                         default=False,
                         help="Switch to do animation\n")
     parser.add_argument("--iani", dest="iani",nargs=2,required=False,
-                        default=(0,n-1),type=int,
+                        default=[0,-1],type=int,
                         help="Animate from frame iani[0] to iani[1]\n")
     parser.add_argument("--ifrm", dest="ifrm",type=int,default=None,
                         help="Frame of simulation to plot:\n"
@@ -437,6 +437,9 @@ def main(args):
             print("[main]: frame out of range of simulation!")
             quit()
 
+    if iani[1] == -1:
+        iani[1] = n-1 
+
     # Get the data
     tarr, data = init(quant, otf_files, prec=32, 
                       nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx) 
@@ -513,11 +516,13 @@ def main(args):
 
         # Do plotting
         fig = plt.figure(figsize=(7.0,5.0),facecolor='white')
-        plt.plot(tarr, np.ones(len(data))*cut, 'r--', lw=3.) 
+        if quant == '<A1>':
+            plt.plot(tarr, np.ones(len(data))*cut, 'r--', lw=3.) 
+            plt.ylim(0.0,0.15)
+        
         plt.plot(tarr, data,'b-',marker='.')
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
-        plt.ylim(0.0, 0.15)
 
         # Get time above cutoff <A1> 
         try:

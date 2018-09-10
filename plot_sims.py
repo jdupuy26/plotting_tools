@@ -177,9 +177,9 @@ def get_quant(file,quant,units,params,precision=32,ctrace=False):
                   'p':gamm1*(e - 0.5*(M1**2.+M2**2.+M3**2.)/d),
                   'T':T,
                   'M':np.sqrt(M1**2.+M2**2.+M3**2.),
-                  'v1':M1/d,'v2':M2/d + omg*x1,'v3':M3/d,
+                  'v1':M1/d,'v2':M2/d,'v3':M3/d,
                   'M1':M1,'M2':M2,'M3':M3,
-                  'V':np.sqrt(M1**2.+(M2 + omg*x1*d)**2.+M3**2.)/d,
+                  'V':np.sqrt(M1**2.+M2**2.+M3**2.)/d,
                   'cs': np.sqrt(gamm1*ie/d), 
                   's1': s1,'s1c': s1,
                   'L': (M2 + omg*x1*d)*X1,
@@ -364,7 +364,7 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False,**kwargs):
 
     # Note x1 is converted to kpc
     if ctrace:
-        aprc, appc = get_fc(False, params, True) 
+        aprc = get_fc(False, params, True) 
         c_arr[:] *= aprc               # get cloud mass  
         return tarr, x1/1.e3, x2, quant_arr, c_arr 
     elif vvec:
@@ -372,7 +372,7 @@ def get_stitch(pdict,quant,myfrms,units=0,ctrace=False,**kwargs):
         v1_arr, v2_arr = vel_p2c(v1_arr, v2_arr, x1, x2)
         return tarr, x1/1.e3, x2, quant_arr, v1_arr, v2_arr 
     elif quant == 's1c' or quant == 'mcent':
-        aprc, appc = get_fc(False, params, True) 
+        aprc = get_fc(False, params, True) 
         quant_arr[:] *= aprc
         # Get mass in central region 
         mcent     = np.sum(quant_arr[:,:,(x1 > 0.0) & (x1 < 500)],axis=(1,2))
@@ -532,6 +532,7 @@ def get_labels(quant,iunit=0,log=False,com=False):
     # Define dictionary for units 
     lab_unitsCOMP = {'E':' [M$_{\odot}$ Myr$^{-2}$]','ie':' [M$_{\odot}$ Myr$^{-2}$]',
                      'd':' [M$_{\odot}$ pc$^{-2}$]', 'p':' [M$_{\odot}$ Myr$^{-2}$]',
+                     'n':' [cm$^{-2}$]',
                      'pie':' [M$_{\odot}$ Myr$^{-2}$]','mcent':' ${\\rm M_{\odot}}$',
                      'T':' [K]', 'M': ' [M$_{\odot}$ pc$^{-1}$ Myr$^{-1}]$',
                      'v1':' [pc Myr$^{-1}$]', 'v2':' [pc Myr$^{-1}$]','v3':' [pc Myr$^{-1}$]', 
@@ -674,6 +675,9 @@ def get_args():
     parser.add_argument("--stat",dest="stat",
                         default='None', type=str,
                         help="Type of statistic to compute error bars in CoM measurement") 
+    parser.add_argument("--savestr",dest="savestr",
+                        default=None, type=str,
+                        help="Save figure as 'savestr.eps'")
     return parser.parse_args() 
     
  
@@ -710,6 +714,7 @@ def main(args):
     ipos     = args.ipos 
     stat     = args.stat
     stream   = args.stream 
+    savestr  = args.savestr
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -864,9 +869,15 @@ def main(args):
             cart_data['vy'].append( polar2cartesian(x1,x2,vy_imgs[i],x1cart,x2cart) )
 
         # Step 2) Call the stream plot function
-        #fig = plt.figure(figsize=(7.0,7.0),facecolor='white')
+        fig = plt.figure(figsize=(7.5,7.0),facecolor='white')
+        ax  = fig.add_subplot(111)
+        ax.set_aspect('equal')
 
-        #ax.streamplot(X1,X2,cart_data['vx'][0],cart_data['vy'][0])
+        speed = np.sqrt(cart_data['vx'][0]**2. + cart_data['vy'][0]**2.)
+
+        stream = ax.streamplot(X1,X2,cart_data['vx'][0],cart_data['vy'][0], 
+                               color=speed,cmap='autumn',density=2,linewidth=2)
+        fig.colorbar(stream.lines)
 
         #plt.show() 
 
@@ -1033,12 +1044,12 @@ def main(args):
             ratio = float(nxp)/float(nyp) 
             fsize = (ratio*7., 7.)
             # Create figure object
-            fig, axes = plt.subplots(nyp,nxp, sharex='col', sharey='row',facecolor='white',
-                                     figsize=(ratio*7.,7.)) 
+            fig, axes = plt.subplots(nxp,nyp, sharex='col', sharey='row',facecolor='white',
+                                     figsize=(7.,ratio*7.)) 
             fig.subplots_adjust(hspace=0, wspace=0)
             # define the colorbar
             fig.subplots_adjust(top=0.8) 
-            cax = fig.add_axes([0.16,0.85,0.7,0.02])
+            cax = fig.add_axes([0.16,0.83,0.7,0.02])
 
             # Now plot
             for (ax, iff) in zip(axes.flat, range(len(ifrm))):
@@ -1058,7 +1069,7 @@ def main(args):
                 im.set_rasterized(True) 
 
             # define global labels
-            fig.text(0.5, 0.04, xlab, ha='center')
+            fig.text(0.5, 0.06, xlab, ha='center')
             fig.text(0.06, 0.5, ylab, va='center', rotation='vertical') 
 
             # Set colorbar
@@ -1093,7 +1104,7 @@ def main(args):
             if rtrace:
                 for i in range(len(rays)):
                     xmin, ymin, xmax, ymax = rays[i]
-                    l                      = longitudes[i] 
+                    l                      = -longitudes[i] 
                     l *= 180./np.pi
                     ax1.plot([xmin,xmax],[ymin,ymax],'w--')
                     
@@ -1132,27 +1143,31 @@ def main(args):
         
     if save:
         mydir  = '/srv/analysis/jdupuy26/figures/'
-        #mydir = os.getcwd()+'/'
         # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
-        myname = os.path.basename(os.path.dirname(os.path.realpath('bgsbu.log')))
-        #myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_') 
+        if savestr is None:
+            myname  = mydir + os.path.basename(os.path.dirname(os.path.realpath('jid.log')))
+            myname += '_'+base+'_'+quant 
+            if ctrace:
+                myname += '_ctrace'
+        else:
+            myname  = mydir + savestr
+
         if anim:
             print("[main]: Saving animation...")
             if ctrace:
-                ani.save(mydir+myname+'_'+base+'_'+quant+'_ctrace.gif',fps=20.
+                ani.save(myname+'.gif',fps=20.
                          ,writer='imagemagick')
             else:
-                ani.save(mydir+myname+'_'+base+'_'+quant+'.gif',fps=20.
+                ani.save(myname+'.gif',fps=20.
                          ,writer='imagemagick')
             
 
         elif pflag:
             print('[main]: Saving panel plot...')
-
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+'.'+fmt, dpi=80, format=fmt,bbox_inches='tight',writer='imagemagick')
+            plt.savefig(myname+'.'+fmt, dpi=80, format=fmt,bbox_inches='tight',writer='imagemagick')
         else:
             print("[main]: Saving frame...")
-            plt.savefig(mydir+myname+'_'+base+'_'+quant+str(ifrm)+'.'+fmt, format=fmt,bbox_inches='tight')
+            plt.savefig(myname+'.'+fmt, format=fmt,bbox_inches='tight')
     else:
         plt.show() 
     

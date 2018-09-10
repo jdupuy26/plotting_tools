@@ -129,7 +129,7 @@ def get_title(quant,nolog,sumv=False,**kwargs):
         if key == 'iline':
             iline = kwargs[key] 
     if quant == 'lv' or quant == 'lvc':
-        lab = 'Intensity of HI emission'
+        lab = 'T$_A$ [K]'
     elif quant == 'sii':
         if   iline == 0:
             lab = '6717 $\AA$ [SII] emission'
@@ -321,6 +321,12 @@ def get_args():
                         default=False, required=False, 
                         help="Switch to return only stitched together array\n"
                              "To be used if this file is imported from another file\n")
+    parser.add_argument("--rtrace", dest="rtrace", action='store_true',
+                        default=False, required=False,
+                        help="Switch to plot rays as vertical lines at 30 deg") 
+    parser.add_argument("--savestr",dest="savestr",
+                        default=None, type=str,
+                        help="Save figure as 'savestr.eps'")
     return parser.parse_args() 
      
 #===============================
@@ -351,6 +357,8 @@ def main(args):
     ipos   = args.ipos
     sumv   = args.sumv
     noplot = args.noplot
+    rtrace = args.rtrace
+    savestr = args.savestr
     
     # Get panel flag 
     pflag = True if np.size(ifrm) > 1 else False 
@@ -433,7 +441,7 @@ def main(args):
         if pflag:
             lw = 1.
         else: 
-            lw = 2.
+            lw = 1.
 
     if noplot:
         if quant == 'asym':
@@ -474,10 +482,12 @@ def main(args):
 
     # Handle plotting sumv stuff
     if sumv:
-        data = np.sum(data,axis=(1))
+        data = np.mean(data,axis=(1))
         if not nolog:
             data = get_log(data) 
         ax1.plot(x,data[0],'b-')
+        ax1.set_xlim(-1.0,1.0)
+        ax1.set_ylim(-5,5) 
         ax1.set_xlabel(xlab)
         ax1.set_ylabel(title) 
         ax1.set_title('t = %1.1f [Myr]' % (tarr[0]))
@@ -488,8 +498,8 @@ def main(args):
         dx = x[1] - x[0]
         dy = y[0][1] - y[0][0]
         #  get extent
-        mnx = x[ 0] - 0.5*dx
-        mxx = x[-1] + 0.5*dx
+        mnx = -(x[ 0] - 0.5*dx)
+        mxx = -(x[-1] + 0.5*dx)
         mny = y[0][ 0] - 0.5*dy
         mxy = y[0][-1] + 0.5*dy
         
@@ -580,9 +590,9 @@ def main(args):
         # do the animation
         ani = animation.FuncAnimation(fig, animate, range(len(myfrms)), 
                                           init_func=anim_init,repeat=False)
-        if save:
-            print("[main]: Saving animation")
-            ani.save(quant+".gif",writer='imagemagick')
+        #if save:
+        #    print("[main]: Saving animation")
+        #    ani.save(quant+".gif",writer='imagemagick')
             #ani.save(quant+".avi")
 
     # Handle making panel plots 
@@ -599,19 +609,19 @@ def main(args):
         
         # define ratio
         ratio = float(nxp)/float(nyp) 
-        fsize = (ratio*7., 7.)
+        fsize = (7., ratio*7.)
         # Create figure object
-        fig, axes = plt.subplots(nyp,nxp, sharex='col', sharey='row',facecolor='white',
-                                 figsize=(ratio*7.,7.)) 
-        fig.subplots_adjust(hspace=0.1, wspace=0.1)
+        fig, axes = plt.subplots(nxp,nyp, sharex='col', sharey='row',facecolor='white',
+                                 figsize=fsize) 
+        fig.subplots_adjust(hspace=0, wspace=0)
         # define the colorbar
         fig.subplots_adjust(top=0.8) 
-        cax = fig.add_axes([0.16,0.85,0.7,0.02])
+        cax = fig.add_axes([0.16,0.83,0.7,0.02])
 
         # Set spacing stuff
         dx  = x[1] - x[0]
-        mnx = x[0 ] - 0.5*dx
-        mxx = x[-1] + 0.5*dx
+        mnx = -(x[0 ] - 0.5*dx)
+        mxx = -(x[-1] + 0.5*dx)
         if quant == 'lv' or quant == 'lvc':
             mny0 = vmnmx[0]
             mxy0 = vmnmx[1]
@@ -653,11 +663,11 @@ def main(args):
             ax.text(0.9*mnx, 0.8*mxy, 't = %1.1f [Myr]' % (tarr[iff]),
                         bbox={'facecolor':'white', 'alpha':0.9, 'pad':5})
             if quant == 'lv' and ipos == 0:
-                ax.set_xticks([-100,0,100])
+                ax.set_xticks([100,0,-100])
             
         # define global labels
-        fig.text(0.5, 0.04, xlab, ha='center')
-        fig.text(0.03, 0.5, ylab, va='center', rotation='vertical') 
+        fig.text(0.5, 0.07, xlab, ha='center')
+        fig.text(0.02, 0.5, ylab, va='center', rotation='vertical') 
 
         # Set colorbar
         cb = fig.colorbar(im,cax=cax, orientation='horizontal') 
@@ -671,8 +681,8 @@ def main(args):
         dx = x[1] - x[0]
         dy = y[0][1] - y[0][0]
         #  get extent
-        mnx = x[ 0] - 0.5*dx
-        mxx = x[-1] + 0.5*dx
+        mnx = -(x[ 0] - 0.5*dx)
+        mxx = -(x[-1] + 0.5*dx)
         mny = y[0][ 0] - 0.5*dy
         mxy = y[0][-1] + 0.5*dy
 
@@ -698,6 +708,9 @@ def main(args):
                 ax1.contour(cloud[0],levels=get_levels(cloud[0],pcts),
                              extent=[mnx,mxx,mny,mxy],
                              colors=colors,origin='lower',alpha=alpha,linewidths=lw)
+        if rtrace: 
+            rays = np.arange(-180.,180.,30.)
+            ax1.vlines(rays, mny0, mxy0, colors='w',linestyles='--')
 
         ax1.set_xlim(mnx,mxx)
         ax1.set_ylim(mny0,mxy0)
@@ -706,12 +719,33 @@ def main(args):
         ax1.set_title('t = %1.1f [Myr]' % tarr[0]) 
         plt.colorbar(im,label=title)
 
-        if save:
-            print("[main]: Saving figure")
-            plt.savefig(quant+str(ifrm)+".eps")
-    
     if save:
-        print("[main]: Program complete")
+        mydir  = '/srv/analysis/jdupuy26/figures/'
+        fmt    = 'eps'
+        # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
+        if savestr is None:
+            myname  = mydir + os.path.basename(os.path.dirname(os.path.realpath('jid.log')))
+            myname += '_'+base+'_'+quant 
+            if ctrace:
+                myname += '_ctrace'
+        else:
+            myname  = mydir + savestr
+
+        if anim:
+            print("[main]: Saving animation...")
+            if ctrace:
+                ani.save(myname+'.gif',fps=20.
+                         ,writer='imagemagick')
+            else:
+                ani.save(myname+'.gif',fps=20.
+                         ,writer='imagemagick')
+
+        elif pflag:
+            print('[main]: Saving panel plot...')
+            plt.savefig(myname+'.'+fmt, dpi=80, format=fmt,bbox_inches='tight',writer='imagemagick')
+        else:
+            print("[main]: Saving frame...")
+            plt.savefig(myname+'.'+fmt, format=fmt,bbox_inches='tight')
     else:
         plt.show()
     #================================================================================#
