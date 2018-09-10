@@ -40,7 +40,7 @@ def read_bin(fl,precision):
     try: 
         file = open(fl,'rb')
     except:
-        print '[read_bin]: failed to supply file input'
+        print('[read_bin]: failed to supply file input')
         quit()
 
 
@@ -49,7 +49,7 @@ def read_bin(fl,precision):
     elif precision == 64:
         prec=np.float64
     else:
-        print '[read_bin]: failed to assign appropriate precision'
+        print('[read_bin]: failed to assign appropriate precision')
         quit()
 
     #check location of EOF
