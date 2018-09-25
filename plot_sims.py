@@ -39,6 +39,7 @@ else:
 from units_class import * 
 from read_bin import read_bin 
 import read_athinput
+import bubble as bub # bubble/HI shell class  
 
 
 #=====================================================
@@ -475,7 +476,7 @@ def get_levels(img,pcts=np.array([0.95,0.5])):
     
     # As long as extrapolated values are negative, should be okay 
     levels = list(f(pcts))  
-    
+
     return levels   
 
 #------------------------------------------------------#
@@ -678,6 +679,13 @@ def get_args():
     parser.add_argument("--savestr",dest="savestr",
                         default=None, type=str,
                         help="Save figure as 'savestr.eps'")
+    parser.add_argument("--bubbles",dest="bubbles",
+                        default=None, type=int,
+                        help="Randomly add N bubbles/HI shells to the disk")
+    parser.add_argument("--dumpbub",dest="dumpbub",
+                        default=False, action='store_true',
+                        required=False,
+                        help="Dump bubbled (d, vR, vPhi, T) data")
     return parser.parse_args() 
     
  
@@ -715,6 +723,8 @@ def main(args):
     stat     = args.stat
     stream   = args.stream 
     savestr  = args.savestr
+    bubbles  = args.bubbles
+    dumpbub  = args.dumpbub
 
     # Get qminmax flag 
     qflag = True if np.size(qminmax) > 1 else False
@@ -722,6 +732,8 @@ def main(args):
     pflag = True if np.size(ifrm) > 1 else False 
     # Get 1d plot flag
     flag1d= True if (quant == 's1c' or quant == 'mcent') else False 
+    # Get bubble flag
+    bub_flag = False if bubbles is None else True 
     
     if np.size(ifrm) == 1: ifrm = ifrm[0]
 
@@ -773,8 +785,53 @@ def main(args):
             if comp:
                 mcent2 /= mc
 
+    elif dumpbub:
+        if len(myfrms) > 1:
+            raise Exception('Cannot dump more than a single snapshot!') 
+        tarr, x1, x2, imgs_d  = get_stitch(pdict,'d' ,myfrms,iunit)
+        tarr, x1, x2, imgs_v1 = get_stitch(pdict,'v1',myfrms,iunit)
+        tarr, x1, x2, imgs_v2 = get_stitch(pdict,'v2',myfrms,iunit)
+        tarr, x1, x2, imgs_T  = get_stitch(pdict,'T' ,myfrms,iunit) 
+        tarr, x1, x2, imgs_s1 = get_stitch(pdict,'s1',myfrms,iunit)
+
     else:
         tarr, x1, x2, imgs   = get_stitch(pdict,quant,myfrms,iunit)
+
+    # handle bubble/HI shells
+    if bub_flag:
+        X1, X2 = np.meshgrid(x1*1.e3, x2, indexing='xy')
+        X , Y  = X1*np.cos(X2), X1*np.sin(X2) 
+        if dumpbub:
+            for i in range(bubbles):
+                mybub   = bub.Bubble()
+                imgs_d  = mybub.apply_bubble('d' ,imgs_d , X, Y)
+                imgs_v1 = mybub.apply_bubble('v1',imgs_v1, X, Y)
+                imgs_v2 = mybub.apply_bubble('v2',imgs_v2, X, Y)
+                imgs_T  = mybub.apply_bubble('T' ,imgs_T , X, Y)   
+
+            #print(imgs_d.dtype, imgs_v1.dtype, imgs_v2.dtype, imgs_T.dtype) 
+            
+            # write out binary file 
+            fname  = 'bubbled_data{}.bin'.format(myfrms[0]) 
+            dim    = np.array([params[0].nx2, params[0].nx1]) 
+            bounds = np.array([params[0].x1min, params[0].x1max,
+                               params[0].x2min, params[0].x2max]) 
+            
+            with open(fname, mode='wb') as f:
+                dim.tofile(f) # write out dimensions as an error check
+                bounds.tofile(f) # write out bounds as an error check
+                imgs_d[0].tofile(f)
+                imgs_v1[0].tofile(f)
+                imgs_v2[0].tofile(f)
+                imgs_T[0].tofile(f)
+                imgs_s1[0].tofile(f) # also write out cloud-data (unbubbled) 
+            # now exit 
+            quit() 
+        # create bubble objects
+        else:
+            for i in range(bubbles):
+                mybub = bub.Bubble()
+                imgs = mybub.apply_bubble(quant, imgs, X, Y) 
 
     # Compute center of mass 
     if com:
