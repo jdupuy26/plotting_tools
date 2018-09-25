@@ -120,21 +120,22 @@ def read_bin(fl,precision):
     Mz = np.fromfile(file,dtype=prec,count=count).reshape(shape)
 
     a = nvar - nscalars
-    
-    if (a == 5): # Adiabatic & no dual energy
+
+    if (a == 5) or (a == 6): # Adiabatic 
         e  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-    if (a == 6): # Adiabatic & dual energy
-        e   = np.fromfile(file,dtype=prec,count=count).reshape(shape)
-        ie  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     if (a == 8): # Adiabatic + MHD & no dual energy 
         e   = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         bx  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         by  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
         bz  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
     
+    # read in scalars before dual energy
     if nscalars > 0:
         for i in range(0,nscalars):
             s[:,:,:,i]  = np.fromfile(file,dtype=prec,count=count).reshape(shape)
+
+    if (a==6) or (a==9):
+        ie = np.fromfile(file,dtype=prec,count=count).reshape(shape)
 
     if ngrav > 0:
         phi = np.fromfile(file,dtype=prec,count=count).reshape(shape)

@@ -366,6 +366,9 @@ def get_args():
                         default=False, required=False,
                         help="Switch to return only the data\n"
                              "To be used if this file is imported from another file\n")
+    parser.add_argument("--savestr",dest="savestr",
+                        default=None, type=str,
+                        help="Save figure as 'savestr.eps'")
 
     return parser.parse_args()
 
@@ -408,6 +411,7 @@ def main(args):
     interp= args.interp
     fmt   = args.fmt
     noplot= args.noplot
+    savestr=args.savestr
 
     if   fit == 'exp':
         fit_func = exp_fit
@@ -454,8 +458,8 @@ def main(args):
 
     # Check if comparing to control simulation
     if comp:
-        ctrl_path  = "/srv/analysis/jdupuy26/longevity_study/"+\
-                     "m0.0/te265/rc400/r1100/a0.0/fac1.0/"
+        ctrl_path  = "/srv/scratch/jdupuy26/jid/jid_adiabatic/longevity_jid/"+\
+                     "char_sims/char_inflow_extended/"
         ctrl_files = get_files(ctrl_path,'id0','*.otf.*')
         ctrl_files.sort()
         nctrl      = len(ctrl_files)
@@ -465,12 +469,13 @@ def main(args):
         print("\n[main]: Using control files located at:\n %s\n" % ctrl_path)
         
         # Get the control data
-        tarr, dcon = init(quant, ctrl_files, prec=32,
+        tcon, dcon = init(quant, ctrl_files, prec=32,
                           nx1_dom=nx1_dom,Nang=Nang,rmnmx=rmnmx)
         
         
         # Print out some useful information
         # 1) MSE, mean squared error
+        '''
         mse  = np.sum((data[1] - dcon[1])**2.)
         mse /= float(data[1].shape[0] * data[1].shape[1])
 
@@ -484,7 +489,7 @@ def main(args):
             data[1] /= dcon[1]
         else:
             print('[main]: Comparison %s not recognized, exiting!' %(comp))
-    
+        '''
     
     if anim:
         print("[main]: Animating from t = %1.1f [Myr]\n" 
@@ -519,8 +524,12 @@ def main(args):
         if quant == '<A1>':
             plt.plot(tarr, np.ones(len(data))*cut, 'r--', lw=3.) 
             plt.ylim(0.0,0.15)
+            plt.xlim(300.,2000.)
         
         plt.plot(tarr, data,'b-',marker='.')
+        if comp:
+            plt.plot(tcon, dcon,'b-',marker='.')
+            plt.plot(tcon,np.ones(len(dcon))*cut,'r--',lw=3.)
         plt.xlabel('t [Myr]')
         plt.ylabel(ystr) 
 
@@ -530,8 +539,8 @@ def main(args):
         except IndexError:
             ts = 0.0 
         # Put on figure
-        plt.text(0.7,0.82,'$\\tau$ = %1.1f [Myr]' %(ts), 
-                 transform=fig.transFigure) 
+        #plt.text(0.7,0.82,'$\\tau$ = %1.1f [Myr]' %(ts), 
+        #         transform=fig.transFigure) 
         
         # Fit perturbation to exponential
         if quant == '<A1>' and fit != 'None':
@@ -751,10 +760,23 @@ def main(args):
 
     # show 
     if save:
-        print("[main]: Program complete")
         mydir  = '/srv/analysis/jdupuy26/figures/'
-        myname = os.getcwd().split('longevity_study/',1)[1].replace('/','_')
-        plt.savefig(mydir+myname+'_'+base+'_'+quant+'.'+fmt,format=fmt,bbox_inches='tight')
+        # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
+        if savestr is None:
+            myname  = mydir + os.path.basename(os.path.dirname(os.path.realpath('jid.log')))
+            myname += '_'+base+'_'+quant 
+            if ctrace:
+                myname += '_ctrace'
+        else:
+            myname  = mydir + savestr
+
+        if anim:
+            print("[main]: Saving animation...")
+            ani.save(myname+'.gif',fps=20.
+                     ,writer='imagemagick')
+        else:
+            print("[main]: Saving frame...")
+            plt.savefig(myname+'.'+fmt, format=fmt,bbox_inches='tight')
     else:
         plt.show()
     #=============================================================

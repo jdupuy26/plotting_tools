@@ -7,6 +7,7 @@ import argparse
 from argparse import RawTextHelpFormatter
 
 # matplotlib imports
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.pyplot import cm
@@ -129,7 +130,7 @@ def get_title(quant,nolog,sumv=False,**kwargs):
         if key == 'iline':
             iline = kwargs[key] 
     if quant == 'lv' or quant == 'lvc':
-        lab = 'T$_A$ [K]'
+        lab = 'T$_{\\rm B}$ [K]'
     elif quant == 'sii':
         if   iline == 0:
             lab = '6717 $\AA$ [SII] emission'
@@ -598,6 +599,7 @@ def main(args):
     # Handle making panel plots 
     elif pflag: 
         # Get the factors 
+        mpl.rc('font',size=16)
         fact    = factors(len(ifrm))
         # Set the number of panels in x and y direction 
         if len(fact) == 2:

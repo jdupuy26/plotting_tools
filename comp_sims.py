@@ -173,6 +173,9 @@ def get_args():
     parser.add_argument("--sumv", dest="sumv",action='store_true',
                     default=False, required=False,
                     help="Sum over velocity bins to get I(l)")                 
+    parser.add_argument("--savestr",dest="savestr",
+                        default=None, type=str,
+                        help="Save figure as 'savestr.eps'")
     # Arguments for otf plotting 
     parser.add_argument("--rmnmx", dest="rmnmx",nargs=2,required=False,
                     default=[5000., 13000.],type=float,
@@ -378,7 +381,7 @@ def make_plots(args,lvflag,otfflag,data,sims):
     #-----------------------------------------#
     # Create the proper figure
     if otfflag or quant == 'asym' or com:
-        fig = plt.figure(figsize=(10.0,7.0),facecolor='white')
+        fig = plt.figure(figsize=(7.0,5.0),facecolor='white')
     else:   
         # Determine the size of the panel
         fact = factors(len(data))
@@ -503,25 +506,30 @@ def make_plots(args,lvflag,otfflag,data,sims):
         markers= ['s','p','^','o']
 
         # Put labels on plot
-        plt.xlabel(xlab,fontsize=16)
-        plt.ylabel(ylab,fontsize=16)
+        plt.xlabel(xlab)#,fontsize=16)
+        plt.ylabel(ylab)#,fontsize=16)
 
         for (dat, v, c, l, m) in zip(data, var, colors, lines, markers): 
             if com:
                 tarr, rlo, rhi, vals = dat
             else:
                 tarr, vals = dat 
+
+            if v == '1e7':
+                v = '$1 \\times 10^7$'
+            if v == '5e6':
+                v = '$5 \\times 10^6$'
             plt.plot(tarr[::step], vals[::step], linestyle=l, color = c, label= '%s%s%s' % (pstr,v, punit),
                      linewidth=2., marker=m, markersize=7.)  
-
             # Error on CoM
             if com: 
                 plt.fill_between(tarr[::step], rlo[::step], rhi[::step], alpha=0.2,antialiased=True, color=c)
+
         
         if quant == '<A1>':
             # Plot cutoff value
             plt.plot(tarr, cut*np.ones(len(tarr)), 'r--', lw=3.)
-        #plt.ylim(0, 0.3)
+        plt.ylim(0, 0.15)
         plt.legend(loc=2) 
     
     # Now handle plotting simulations 
@@ -587,6 +595,10 @@ def make_plots(args,lvflag,otfflag,data,sims):
 def main():
     cwd  = os.getcwd() 
     args = get_args() 
+
+    save = args.save
+    savestr = args.savestr
+    fmt     = args.fmt
     
     # Now based off of simulation selection, get relevant directories 
     sims = get_sims(args, cwd)  
@@ -594,7 +606,22 @@ def main():
     lvflag, otfflag, data = get_data(args,sims)
     # Now construct the plots 
     make_plots(args,lvflag,otfflag,data,sims) 
-    plt.show() 
+
+    if save:
+        mydir  = '/srv/analysis/jdupuy26/figures/'
+        # Create file name (have to make sure it is unique for each sim to avoid overwrites)  
+        if savestr is None:
+            myname  = mydir + os.path.basename(os.path.dirname(os.path.realpath('jid.log')))
+            myname += '_'+base+'_'+quant 
+            if ctrace:
+                myname += '_ctrace'
+        else:
+            myname  = mydir + savestr
+
+        print("[main]: Saving frame...")
+        plt.savefig(myname+'.'+fmt, format=fmt,bbox_inches='tight')
+    else:
+        plt.show() 
 
     return 
 
