@@ -799,20 +799,30 @@ def main(args):
 
     # handle bubble/HI shells
     if bub_flag:
+        mode   = 'shell'
+        # get the mean_Teq data 
+        darr, Teq = np.loadtxt('/afs/cas.unc.edu/users/j/d/jdupuy26/'
+                               'Johns_work/misc_scripts/plotting_tools/mean_Teq.dat',
+                               usecols=(0,1),unpack=True)  
+
+        # interpolate on this data  
+            # if density is higher than our range -- just use 20 K 
+        fTeq = interp1d(darr, Teq, bounds_error=False, fill_value=20.) 
+
         X1, X2 = np.meshgrid(x1*1.e3, x2, indexing='xy')
         X , Y  = X1*np.cos(X2), X1*np.sin(X2) 
         if dumpbub:
             for i in range(bubbles):
                 mybub   = bub.Bubble()
-                imgs_d  = mybub.apply_bubble('d' ,imgs_d , X, Y)
-                imgs_v1 = mybub.apply_bubble('v1',imgs_v1, X, Y)
-                imgs_v2 = mybub.apply_bubble('v2',imgs_v2, X, Y)
-                imgs_T  = mybub.apply_bubble('T' ,imgs_T , X, Y)   
+                imgs_d  = mybub.apply_bubble('d' ,imgs_d , X, Y, mode=mode)
+                imgs_v1 = mybub.apply_bubble('v1',imgs_v1, X, Y, mode=mode)
+                imgs_v2 = mybub.apply_bubble('v2',imgs_v2, X, Y, mode=mode)
+                imgs_T  = mybub.apply_bubble('T' ,imgs_T , X, Y, mode=mode, fTeq=fTeq, bub_dens=imgs_d)   
 
             #print(imgs_d.dtype, imgs_v1.dtype, imgs_v2.dtype, imgs_T.dtype) 
             
             # write out binary file 
-            fname  = 'bubbled_data{}.bin'.format(myfrms[0]) 
+            fname  = 'bubbled_data{}_n{}.bin'.format(myfrms[0],bubbles) 
             dim    = np.array([params[0].nx2, params[0].nx1]) 
             bounds = np.array([params[0].x1min, params[0].x1max,
                                params[0].x2min, params[0].x2max]) 
@@ -831,7 +841,7 @@ def main(args):
         else:
             for i in range(bubbles):
                 mybub = bub.Bubble()
-                imgs = mybub.apply_bubble(quant, imgs, X, Y) 
+                imgs = mybub.apply_bubble(quant, imgs, X, Y, mode=mode, fTeq=fTeq) 
 
     # Compute center of mass 
     if com:
